@@ -115,14 +115,4 @@ print(yearly.tail(5))
 # Example: compare model vs XU100 vs XAU/TRY daily returns
 returns = pd.read_csv("Models/results/value/returns.csv", parse_dates=["date"])
 print(returns[["date", "Return", "XU100_Return", "XAU_TRY_Return"]].tail())
-```
-
-## Data And Sensitive Files
-
-This repository intentionally keeps sensitive/local files out of git (see `.gitignore`), including:
-
-- `data/EVDS API.txt`
-- `data/Fetcher-Scrapper/fintables.com_cookies.txt`
-- `.env`
-
-If you add local keys, keep them in ignored files only.
+``
