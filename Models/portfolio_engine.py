@@ -29,16 +29,33 @@ sys.path.insert(0, str(Path(__file__).parent))
 from common.data_loader import DataLoader
 from signals.profitability_signals import build_profitability_signals
 from signals.value_signals import build_value_signals
-from signals.size_signals import build_size_signals
+from signals.small_cap_signals import build_small_cap_signals
 from signals.investment_signals import build_investment_signals
 from signals.momentum_signals import build_momentum_signals
 from signals.sma_signals import build_sma_signals
 from signals.donchian_signals import build_donchian_signals
 from signals.xu100_signals import build_xu100_signals
+from signals.trend_value_signals import build_trend_value_signals
+from signals.breakout_value_signals import build_breakout_value_signals
+from signals.currency_rotation_signals import build_currency_rotation_signals
+from signals.dividend_rotation_signals import build_dividend_rotation_signals
+from signals.macro_hedge_signals import build_macro_hedge_signals
+from signals.quality_momentum_signals import build_quality_momentum_signals
+from signals.quality_value_signals import build_quality_value_signals
+from signals.small_cap_momentum_signals import build_small_cap_momentum_signals
+from signals.size_rotation_signals import build_size_rotation_signals
+from signals.size_rotation_momentum_signals import build_size_rotation_momentum_signals
+from signals.size_rotation_quality_signals import build_size_rotation_quality_signals
+
 
 
 # ============================================================================
 # CONFIGURATION
+# ============================================================================
+
+# ============================================================================
+# DEFAULT CONFIGURATION VALUES
+# These can be overridden per-signal via config files
 # ============================================================================
 
 REGIME_ALLOCATIONS = {
@@ -49,6 +66,40 @@ REGIME_ALLOCATIONS = {
     'Bear': 0.0
 }
 
+# Default portfolio options (can be overridden in config files)
+DEFAULT_PORTFOLIO_OPTIONS = {
+    # Regime filter - switches to gold in Bear/Stress regimes
+    'use_regime_filter': True,
+
+    # Volatility targeting - scales leverage to target constant vol
+    'use_vol_targeting': True,
+    'target_downside_vol': 0.20,
+    'vol_lookback': 63,
+    'vol_floor': 0.10,
+    'vol_cap': 1.0,
+
+    # Inverse volatility position sizing - weights positions by inverse downside vol
+    'use_inverse_vol_sizing': True,
+    'inverse_vol_lookback': 60,
+    'max_position_weight': 0.25,
+
+    # Position stop loss
+    'use_stop_loss': True,
+    'stop_loss_threshold': 0.15,
+
+    # Liquidity filter - removes bottom quartile by volume
+    'use_liquidity_filter': True,
+    'liquidity_quantile': 0.25,
+
+    # Transaction costs
+    'use_slippage': True,
+    'slippage_bps': 5.0,
+
+    # Portfolio size
+    'top_n': 20,
+}
+
+# Legacy constants (for backward compatibility)
 TOP_N = 20
 LIQUIDITY_QUANTILE = 0.25
 POSITION_STOP_LOSS = 0.15
@@ -366,7 +417,7 @@ class PortfolioEngine:
         
         # Load XAU/TRY
         xautry_file = self.data_dir / "xau_try_2013_2026.csv"
-        self.xautry_prices = self.loader.load_xautry_prices(xautry_file, self.start_date, self.end_date)
+        self.xautry_prices = self.loader.load_xautry_prices(xautry_file)
         
         # Load XU100
         xu100_file = self.data_dir / "xu100_prices.csv"
@@ -420,8 +471,8 @@ class PortfolioEngine:
             signals = build_profitability_signals(self.fundamentals, dates, self.loader)
         elif factor_name == "value":
             signals = build_value_signals(self.fundamentals, self.close_df, dates, self.loader)
-        elif factor_name == "size":
-            signals = build_size_signals(self.fundamentals, self.close_df, self.volume_df, dates, self.loader)
+        elif factor_name == "small_cap":
+            signals = build_small_cap_signals(self.fundamentals, self.close_df, self.volume_df, dates, self.loader)
         elif factor_name == "investment":
             signals = build_investment_signals(self.fundamentals, self.close_df, dates, self.loader)
         elif factor_name == "momentum":
@@ -442,11 +493,51 @@ class PortfolioEngine:
             # Add XU100 prices to close_df for backtesting
             if 'XU100' not in self.close_df.columns and self.xu100_prices is not None:
                 self.close_df['XU100'] = self.xu100_prices.reindex(self.close_df.index)
+        elif factor_name == "trend_value":
+            # Trend + Value composite: value stocks in uptrends only
+            signals = build_trend_value_signals(self.close_df, dates, self.loader)
+        elif factor_name == "breakout_value":
+            # Breakout + Value composite: value stocks breaking out
+            high_df = self.prices.pivot_table(index='Date', columns='Ticker', values='High').sort_index()
+            high_df.columns = [c.split('.')[0].upper() for c in high_df.columns]
+            low_df = self.prices.pivot_table(index='Date', columns='Ticker', values='Low').sort_index()
+            low_df.columns = [c.split('.')[0].upper() for c in low_df.columns]
+            signals = build_breakout_value_signals(self.close_df, high_df, low_df, dates, self.loader)
+        elif factor_name == "currency_rotation":
+            # Currency rotation: USD/TRY mean reversion with sector rotation
+            signals = build_currency_rotation_signals(self.close_df, dates, self.loader)
+        elif factor_name == "dividend_rotation":
+            # Dividend rotation: High-quality dividend stocks during rate normalization
+            signals = build_dividend_rotation_signals(self.close_df, dates, self.loader)
+        elif factor_name == "macro_hedge":
+            # Macro hedge: Fortress balance sheet stocks for macro protection
+            signals = build_macro_hedge_signals(self.close_df, dates, self.loader)
+        elif factor_name == "quality_momentum":
+            # Quality Momentum: Momentum + Profitability composite
+            signals = build_quality_momentum_signals(self.close_df, self.fundamentals, dates, self.loader)
+        elif factor_name == "quality_value":
+            # Quality Value: Value + Profitability composite
+            signals = build_quality_value_signals(self.close_df, self.fundamentals, dates, self.loader)
+        elif factor_name == "small_cap_momentum":
+            # Small Cap Momentum: Size + Momentum composite
+            signals = build_small_cap_momentum_signals(self.close_df, self.fundamentals, dates, self.loader)
+        elif factor_name == "size_rotation":
+            # Size Rotation: Dynamically switches between small and large caps
+            signals = build_size_rotation_signals(self.close_df, dates, self.loader)
+        elif factor_name == "size_rotation_momentum":
+            # Size Rotation Momentum: Pure momentum within winning size segment
+            signals = build_size_rotation_momentum_signals(self.close_df, dates, self.loader)
+        elif factor_name == "size_rotation_quality":
+            # Size Rotation Quality: Momentum + Profitability within winning size segment
+            signals = build_size_rotation_quality_signals(self.close_df, self.fundamentals, dates, self.loader)
         else:
             raise ValueError(f"Unknown factor: {factor_name}")
-        
-        # Run backtest with custom timeline
-        results = self._run_backtest(signals, factor_name, rebalance_freq, factor_start_date, factor_end_date)
+
+        # Get portfolio options from config
+        portfolio_options = config.get('portfolio_options', {})
+
+        # Run backtest with custom timeline and portfolio options
+        results = self._run_backtest(signals, factor_name, rebalance_freq, factor_start_date, factor_end_date, portfolio_options)
         
         # Save results
         self.save_results(results, factor_name)
@@ -459,10 +550,35 @@ class PortfolioEngine:
         
         return results
     
-    def _run_backtest(self, signals: pd.DataFrame, factor_name: str, rebalance_freq: str = 'quarterly', 
-                     start_date: pd.Timestamp = None, end_date: pd.Timestamp = None):
-        """Run backtest with regime awareness, risk management, and configurable rebalancing"""
-        
+    def _run_backtest(self, signals: pd.DataFrame, factor_name: str, rebalance_freq: str = 'quarterly',
+                     start_date: pd.Timestamp = None, end_date: pd.Timestamp = None,
+                     portfolio_options: dict = None):
+        """Run backtest with regime awareness, risk management, and configurable rebalancing
+
+        Args:
+            signals: DataFrame of signals (date x ticker)
+            factor_name: Name of the factor being tested
+            rebalance_freq: 'monthly' or 'quarterly'
+            start_date: Backtest start date
+            end_date: Backtest end date
+            portfolio_options: Dict of portfolio engineering toggles (from config)
+        """
+
+        # Merge default options with config-provided options
+        opts = DEFAULT_PORTFOLIO_OPTIONS.copy()
+        if portfolio_options:
+            opts.update(portfolio_options)
+
+        # Print active portfolio engineering features
+        print(f"\n🔧 Portfolio Engineering Settings:")
+        print(f"   Regime Filter: {'ON' if opts['use_regime_filter'] else 'OFF'}")
+        print(f"   Vol Targeting: {'ON (' + str(int(opts['target_downside_vol']*100)) + '%)' if opts['use_vol_targeting'] else 'OFF'}")
+        print(f"   Inverse Vol Sizing: {'ON' if opts['use_inverse_vol_sizing'] else 'OFF'}")
+        print(f"   Stop Loss: {'ON (' + str(int(opts['stop_loss_threshold']*100)) + '%)' if opts['use_stop_loss'] else 'OFF'}")
+        print(f"   Liquidity Filter: {'ON' if opts['use_liquidity_filter'] else 'OFF'}")
+        print(f"   Slippage: {'ON (' + str(opts['slippage_bps']) + ' bps)' if opts['use_slippage'] else 'OFF'}")
+        print(f"   Top N Stocks: {opts['top_n']}")
+
         # Use provided dates or fall back to engine defaults
         backtest_start = start_date if start_date is not None else self.start_date
         backtest_end = end_date if end_date is not None else self.end_date
@@ -473,10 +589,19 @@ class PortfolioEngine:
         
         open_df = prices_filtered.pivot_table(index='Date', columns='Ticker', values='Open').sort_index()
         open_df.columns = [c.split('.')[0].upper() for c in open_df.columns]
-        
+
         # Add XU100 to open_df if available (for XU100 benchmark backtest)
         if self.xu100_prices is not None and 'XU100' not in open_df.columns:
             open_df['XU100'] = self.xu100_prices.reindex(open_df.index)
+
+        # For XU100 factor: filter out dates where XU100 data is missing
+        # This ensures fair comparison with benchmark (avoids 0-return days from missing data)
+        if factor_name == "xu100":
+            valid_xu100_mask = open_df['XU100'].notna()
+            n_filtered = (~valid_xu100_mask).sum()
+            if n_filtered > 0:
+                print(f"   Filtered {n_filtered} dates with missing XU100 data")
+                open_df = open_df[valid_xu100_mask]
         
         # Align regime series
         # NOTE: Regime model was trained with a train_end_date cutoff.
@@ -487,8 +612,13 @@ class PortfolioEngine:
         regime_series = self.regime_series.reindex(open_df.index).ffill()
         regime_series_lagged = regime_series.shift(1).ffill()  # Lag by 1 day to avoid look-ahead
         
-        # Align XAU/TRY
-        xautry_prices = self.xautry_prices.reindex(open_df.index).ffill()
+        # Align XAU/TRY (avoid cross-run contamination from cached slicing)
+        xautry_series = self.loader.load_xautry_prices(
+            self.data_dir / "xau_try_2013_2026.csv",
+            start_date=backtest_start,
+            end_date=backtest_end,
+        )
+        xautry_prices = xautry_series.reindex(open_df.index).ffill()
         
         # Calculate returns
         open_fwd_ret = open_df.shift(-1) / open_df - 1.0
@@ -526,14 +656,22 @@ class PortfolioEngine:
         
         # Track regime-specific performance
         regime_returns_tracker = {regime: [] for regime in ['Bull', 'Recovery', 'Choppy', 'Stress', 'Bear']}
-        
-        slippage_factor = SLIPPAGE_BPS / 10000.0
-        
+
+        # Get options for this backtest
+        slippage_factor = opts['slippage_bps'] / 10000.0 if opts['use_slippage'] else 0.0
+        top_n = opts['top_n']
+        stop_loss_threshold = opts['stop_loss_threshold']
+
         for i, date in enumerate(trading_days[:-1]):
             regime = regime_series_lagged.get(date, 'Choppy')
             if pd.isna(regime):
                 regime = 'Choppy'
-            allocation = REGIME_ALLOCATIONS.get(regime, 0.5)
+
+            # Regime filter: if disabled, always use 100% allocation
+            if opts['use_regime_filter']:
+                allocation = REGIME_ALLOCATIONS.get(regime, 0.5)
+            else:
+                allocation = 1.0  # Always fully invested
             
             is_rebalance_day = date in rebalance_days
             
@@ -560,73 +698,93 @@ class PortfolioEngine:
                             prev_selected = set(current_holdings)
                     else:
                         # Standard stock selection path
-                        # Liquidity filter
-                        available = [t for t in day_signals.index if t in open_df.columns 
+                        available = [t for t in day_signals.index if t in open_df.columns
                                     and pd.notna(open_df.loc[date, t])]
-                        available = self._filter_by_liquidity(available, date)
+
+                        # Liquidity filter (optional)
+                        if opts['use_liquidity_filter']:
+                            available = self._filter_by_liquidity(available, date, opts['liquidity_quantile'])
                         day_signals = day_signals[available]
-                        
-                        if len(day_signals) >= TOP_N:
+
+                        if len(day_signals) >= top_n:
                             # Select top N
-                            top_stocks = day_signals.nlargest(TOP_N).index.tolist()
+                            top_stocks = day_signals.nlargest(top_n).index.tolist()
                             current_holdings = top_stocks
-                            entry_prices = {t: open_df.loc[date, t] for t in top_stocks 
+                            entry_prices = {t: open_df.loc[date, t] for t in top_stocks
                                           if t in open_df.columns and pd.notna(open_df.loc[date, t])}
-                            
+
                             # Track new positions
                             new_positions = set(current_holdings) - old_selected
                             trade_count += len(new_positions)
                             prev_selected = set(current_holdings)
             else:
                 old_selected = set()  # No rebalance, no turnover
-            
-            # Daily stop-loss check
-            # Use open prices for consistency: entry at open, check drawdown vs current open
-            holdings_to_keep = []
-            for ticker in current_holdings:
-                if ticker in stopped_out:
-                    continue
-                if ticker not in entry_prices:
-                    holdings_to_keep.append(ticker)
-                    continue
-                
-                entry = entry_prices[ticker]
-                # Use OPEN price for stop-loss check (consistent with entry)
-                current_price = open_df.loc[date, ticker] if date in open_df.index and ticker in open_df.columns else np.nan
-                
-                if pd.notna(current_price) and pd.notna(entry) and entry > 0:
-                    drawdown = (current_price / entry) - 1.0
-                    if drawdown < -POSITION_STOP_LOSS:
-                        stopped_out.add(ticker)
+
+            # Daily stop-loss check (optional)
+            if opts['use_stop_loss']:
+                # Use open prices for consistency: entry at open, check drawdown vs current open
+                holdings_to_keep = []
+                for ticker in current_holdings:
+                    if ticker in stopped_out:
                         continue
-                
-                holdings_to_keep.append(ticker)
-            
-            active_holdings = holdings_to_keep
+                    if ticker not in entry_prices:
+                        holdings_to_keep.append(ticker)
+                        continue
+
+                    entry = entry_prices[ticker]
+                    # Use OPEN price for stop-loss check (consistent with entry)
+                    current_price = open_df.loc[date, ticker] if date in open_df.index and ticker in open_df.columns else np.nan
+
+                    if pd.notna(current_price) and pd.notna(entry) and entry > 0:
+                        drawdown = (current_price / entry) - 1.0
+                        if drawdown < -stop_loss_threshold:
+                            stopped_out.add(ticker)
+                            continue
+
+                    holdings_to_keep.append(ticker)
+
+                active_holdings = holdings_to_keep
+            else:
+                # No stop loss - keep all current holdings
+                active_holdings = current_holdings
             
             # Calculate portfolio return
             if active_holdings and allocation > 0:
-                # Inverse downside volatility weighting
-                weights = inverse_downside_vol_weights(self.close_df, active_holdings, date)
-                
+                # Position weighting: inverse downside vol or equal weight
+                if opts['use_inverse_vol_sizing']:
+                    weights = inverse_downside_vol_weights(
+                        self.close_df, active_holdings, date,
+                        lookback=opts['inverse_vol_lookback'],
+                        max_weight=opts['max_position_weight']
+                    )
+                else:
+                    # Equal weight
+                    weights = pd.Series(1.0 / len(active_holdings), index=active_holdings)
+
                 stock_return = 0.0
                 for ticker in active_holdings:
                     if ticker in open_fwd_ret.columns:
                         ret = open_fwd_ret.loc[date, ticker]
                         if pd.notna(ret):
                             stock_return += ret * weights[ticker]
-                
-                # Apply slippage (using robust trade tracking)
-                if is_rebalance_day and old_selected:
+
+                # Apply slippage (optional)
+                if opts['use_slippage'] and is_rebalance_day and old_selected:
                     turnover = len(set(active_holdings) - old_selected) / max(len(active_holdings), 1)
                     stock_return -= turnover * slippage_factor * 2
-                
-                # Blend with XAU/TRY
+
+                # Blend with XAU/TRY (only if regime filter is active)
                 xautry_ret = xautry_fwd_ret.loc[date] if date in xautry_fwd_ret.index else 0.0
-                port_ret = allocation * stock_return + (1 - allocation) * xautry_ret
+                if opts['use_regime_filter']:
+                    port_ret = allocation * stock_return + (1 - allocation) * xautry_ret
+                else:
+                    port_ret = stock_return  # No gold blending
             else:
                 xautry_ret = xautry_fwd_ret.loc[date] if date in xautry_fwd_ret.index else 0.0
-                port_ret = xautry_ret
+                if opts['use_regime_filter']:
+                    port_ret = xautry_ret  # Full gold allocation
+                else:
+                    port_ret = 0.0  # No holdings, no return
             
             # Track regime-specific returns
             regime_returns_tracker[regime].append(port_ret)
@@ -663,15 +821,25 @@ class PortfolioEngine:
         # Build results
         returns_df = pd.DataFrame(portfolio_returns).set_index('date')
         raw_returns = returns_df['return']
-        
-        # Apply volatility targeting
-        print(f"\n📈 Applying {TARGET_DOWNSIDE_VOL*100:.0f}% downside volatility targeting...")
-        returns = apply_downside_vol_targeting(raw_returns, target_vol=TARGET_DOWNSIDE_VOL)
-        
-        # Calculate realized downside vol after targeting
-        neg_rets = returns[returns < 0]
-        realized_downside_vol = neg_rets.std() * np.sqrt(252) if len(neg_rets) > 2 else 0
-        print(f"   Realized downside volatility: {realized_downside_vol*100:.1f}%")
+
+        # Apply volatility targeting (optional)
+        if opts['use_vol_targeting']:
+            print(f"\n📈 Applying {opts['target_downside_vol']*100:.0f}% downside volatility targeting...")
+            returns = apply_downside_vol_targeting(
+                raw_returns,
+                target_vol=opts['target_downside_vol'],
+                lookback=opts['vol_lookback'],
+                vol_floor=opts['vol_floor'],
+                vol_cap=opts['vol_cap']
+            )
+
+            # Calculate realized downside vol after targeting
+            neg_rets = returns[returns < 0]
+            realized_downside_vol = neg_rets.std() * np.sqrt(252) if len(neg_rets) > 2 else 0
+            print(f"   Realized downside volatility: {realized_downside_vol*100:.1f}%")
+        else:
+            print(f"\n📈 Volatility targeting: OFF (using raw returns)")
+            returns = raw_returns
         
         # Calculate metrics on vol-targeted returns
         equity = (1 + returns).cumprod()
@@ -743,19 +911,19 @@ class PortfolioEngine:
         
         return rebalance_days
     
-    def _filter_by_liquidity(self, tickers, date):
+    def _filter_by_liquidity(self, tickers, date, liquidity_quantile=LIQUIDITY_QUANTILE):
         """Remove bottom quartile by liquidity"""
         if date not in self.volume_df.index:
             candidates = self.volume_df.index[self.volume_df.index <= date]
             if candidates.empty:
                 return tickers
             date = candidates.max()
-        
+
         adv = self.volume_df.loc[date, [t for t in tickers if t in self.volume_df.columns]].dropna()
         if adv.empty:
             return tickers
-        
-        threshold = adv.quantile(LIQUIDITY_QUANTILE)
+
+        threshold = adv.quantile(liquidity_quantile)
         liquid = set(adv[adv >= threshold].index)
         return [t for t in tickers if t in liquid]
     
@@ -880,7 +1048,9 @@ class PortfolioEngine:
                 all_returns['XU100'] = xu100_returns
 
         if self.xautry_prices is not None:
-            xautry_returns = self.xautry_prices.pct_change().dropna()
+            xautry_returns = self.loader.load_xautry_prices(
+                self.data_dir / "xau_try_2013_2026.csv"
+            ).pct_change().dropna()
             all_returns['XAUTRY'] = xautry_returns
 
         # Create DataFrame and align dates

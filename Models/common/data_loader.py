@@ -229,7 +229,12 @@ class DataLoader:
 
         return self._regime_series
     
-    def load_xautry_prices(self, csv_path: Path, start_date: str, end_date: str) -> pd.Series:
+    def load_xautry_prices(
+        self,
+        csv_path: Path,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.Series:
         """Load XAU/TRY prices"""
         if self._xautry_prices is None:
             print("\n💰 Loading XAU/TRY prices...")
@@ -238,11 +243,16 @@ class DataLoader:
                 raise ValueError("XAU_TRY column not found in CSV.")
             df = df.sort_values("Date")
             series = df.set_index("Date")["XAU_TRY"].astype(float)
-            series = series.loc[(series.index >= start_date) & (series.index <= end_date)]
             series.name = "XAU_TRY"
             self._xautry_prices = series
             print(f"  ✅ Loaded {len(series)} XAU/TRY observations")
-        return self._xautry_prices
+
+        series = self._xautry_prices
+        if start_date is not None:
+            series = series.loc[series.index >= start_date]
+        if end_date is not None:
+            series = series.loc[series.index <= end_date]
+        return series
     
     def load_xu100_prices(self, csv_path: Path) -> pd.Series:
         """Load XU100 benchmark prices"""
@@ -254,3 +264,37 @@ class DataLoader:
             self._xu100_prices = df['Open'] if 'Open' in df.columns else df.iloc[:, 0]
             print(f"  ✅ Loaded {len(self._xu100_prices)} XU100 observations")
         return self._xu100_prices
+    
+    def load_usdtry(self) -> pd.DataFrame:
+        """Load USD/TRY exchange rate data"""
+        print("\n💱 Loading USD/TRY data...")
+        usdtry_file = self.data_dir / "usdtry_data.csv"
+        
+        if not usdtry_file.exists():
+            print(f"  ⚠️  USD/TRY file not found: {usdtry_file}")
+            return pd.DataFrame()
+        
+        df = pd.read_csv(usdtry_file, parse_dates=['Date'])
+        df = df.set_index('Date').sort_index()
+        
+        # Rename column to 'Close' for consistency
+        if 'USDTRY' in df.columns:
+            df = df.rename(columns={'USDTRY': 'Close'})
+        
+        print(f"  ✅ Loaded {len(df)} USD/TRY observations")
+        return df
+    
+    def load_fundamental_metrics(self) -> pd.DataFrame:
+        """Load pre-calculated fundamental metrics"""
+        print("\n📊 Loading fundamental metrics...")
+        metrics_file = self.data_dir / "fundamental_metrics.parquet"
+        
+        if not metrics_file.exists():
+            print(f"  ⚠️  Fundamental metrics file not found: {metrics_file}")
+            print(f"  Run calculate_fundamental_metrics.py to generate this file")
+            return pd.DataFrame()
+        
+        df = pd.read_parquet(metrics_file)
+        print(f"  ✅ Loaded {len(df)} metric observations")
+        print(f"  Metrics: {df.columns.tolist()}")
+        return df
