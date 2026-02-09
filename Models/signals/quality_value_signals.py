@@ -121,11 +121,27 @@ def calculate_value_for_ticker(
     
     # Calculate P/B and P/E
     pb = market_cap / combined["BookValue"]
+    
+    # For P/E, only use positive earnings (negative earnings = loss-making company)
+    # Filter out negative earnings to avoid misleading "cheap" P/E ratios
     pe = market_cap / combined["NetIncome"]
+    pe_mask = combined["NetIncome"] > 0
+    pe = pe.where(pe_mask, np.nan)
     
     # Composite value score (lower is better, so we'll invert it)
-    # Equal weight P/B and P/E
-    value_score = 0.5 * pb + 0.5 * pe
+    # If P/E is NaN (negative earnings), use only P/B
+    # If both are valid, equal weight P/B and P/E
+    value_score = pd.Series(index=pb.index, dtype=float)
+    
+    # Where both P/B and P/E are valid
+    both_valid = pb.notna() & pe.notna()
+    value_score[both_valid] = 0.5 * pb[both_valid] + 0.5 * pe[both_valid]
+    
+    # Where only P/B is valid (negative earnings)
+    only_pb_valid = pb.notna() & pe.isna()
+    value_score[only_pb_valid] = pb[only_pb_valid]
+    
+    # Clean up inf values and NaN
     value_score = value_score.replace([np.inf, -np.inf], np.nan).dropna()
     
     if value_score.empty:

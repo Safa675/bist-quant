@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta
 from typing import Optional, List
 import asyncio
+import numpy as np
 import sys
 from pathlib import Path
 
@@ -64,6 +65,72 @@ REGIME_RECOMMENDATIONS = {
     'Recovery': "Gradual re-entry, focus on quality names"
 }
 
+REGIME_ORDER = ['Bull', 'Bear', 'Stress', 'Choppy', 'Recovery']
+
+
+def _uniform_probabilities() -> dict:
+    """Return a uniform 5-regime probability distribution."""
+    p = 1.0 / len(REGIME_ORDER)
+    return {regime: p for regime in REGIME_ORDER}
+
+
+def _update_state_from_scheduler(rf, simplified_regimes):
+    """Update API runtime state using objects produced by scheduler."""
+    if simplified_regimes is None or rf is None:
+        return
+
+    # Keep simplified regimes as Series for scalar access in endpoints.
+    if hasattr(simplified_regimes, 'columns') and 'simplified_regime' in simplified_regimes.columns:
+        simplified_regimes = simplified_regimes['simplified_regime']
+
+    state.regime_filter = rf
+    state.features = rf.features
+    state.regimes = rf.regimes
+    state.simplified_regimes = simplified_regimes
+    state.last_update = datetime.now()
+    state.models_loaded['regime_filter'] = True
+
+
+def _forecast_markov_probabilities(regime_history, start_regime: str, horizon: int) -> dict:
+    """
+    Forecast regime probabilities using an empirical Markov transition matrix.
+    """
+    if horizon < 1:
+        return _uniform_probabilities()
+
+    if start_regime not in REGIME_ORDER or regime_history is None or len(regime_history) < 2:
+        return _uniform_probabilities()
+
+    clean = regime_history.dropna().astype(str)
+    transitions = np.zeros((len(REGIME_ORDER), len(REGIME_ORDER)), dtype=float)
+    regime_to_idx = {regime: i for i, regime in enumerate(REGIME_ORDER)}
+
+    for current, nxt in zip(clean.iloc[:-1], clean.iloc[1:]):
+        if current in regime_to_idx and nxt in regime_to_idx:
+            transitions[regime_to_idx[current], regime_to_idx[nxt]] += 1.0
+
+    if transitions.sum() == 0:
+        return _uniform_probabilities()
+
+    # Row-normalize; fall back to self-transition when a row has no observations.
+    for i in range(len(REGIME_ORDER)):
+        row_sum = transitions[i].sum()
+        if row_sum > 0:
+            transitions[i] /= row_sum
+        else:
+            transitions[i, i] = 1.0
+
+    state_vec = np.zeros(len(REGIME_ORDER), dtype=float)
+    state_vec[regime_to_idx[start_regime]] = 1.0
+
+    future = state_vec @ np.linalg.matrix_power(transitions, horizon)
+    total = float(future.sum())
+    if total <= 0:
+        return _uniform_probabilities()
+
+    future /= total
+    return {regime: float(future[i]) for i, regime in enumerate(REGIME_ORDER)}
+
 
 async def load_models():
     """Load models on startup"""
@@ -71,7 +138,7 @@ async def load_models():
 
     try:
         from regime_filter import RegimeFilter
-        from simplified_regime import SimplifiedRegimeClassifier
+        from regime_models import SimplifiedRegimeClassifier
 
         # Initialize regime filter
         state.regime_filter = RegimeFilter()
@@ -85,7 +152,9 @@ async def load_models():
 
         # Get simplified regimes
         simple_classifier = SimplifiedRegimeClassifier()
-        state.simplified_regimes = simple_classifier.classify(state.regimes)
+        state.simplified_regimes = simple_classifier.classify(
+            state.regimes
+        )['simplified_regime']
 
         state.last_update = datetime.now()
         print("Regime filter loaded successfully")
@@ -124,7 +193,11 @@ async def lifespan(app: FastAPI):
         scheduler.start()
 
         # Set up callbacks for WebSocket broadcasts
-        async def on_update(regime, date, regime_changed, features):
+        async def on_update(regime, date, regime_changed, features, rf=None, simplified=None):
+            # Keep REST API state in sync with scheduled updates.
+            if rf is not None and simplified is not None:
+                _update_state_from_scheduler(rf, simplified)
+
             await manager.broadcast_regime_update({
                 'regime': regime,
                 'date': str(date),
@@ -324,22 +397,39 @@ async def get_regime_prediction(
     current_date = state.features.index[-1]
     target_date = current_date + timedelta(days=horizon)
 
-    # Default to current regime
-    current_regime = state.simplified_regimes.iloc[-1] if state.simplified_regimes is not None else "Unknown"
-    confidence = 0.6
-    probabilities = RegimeProbabilities(
-        Bull=0.2, Bear=0.2, Stress=0.2, Choppy=0.2, Recovery=0.2
-    )
+    # Build a true horizon-dependent fallback forecast from historical transitions.
+    latest_regime = state.simplified_regimes.iloc[-1] if state.simplified_regimes is not None else "Unknown"
+    if latest_regime in REGIME_ORDER:
+        probs_dict = _forecast_markov_probabilities(state.simplified_regimes, latest_regime, horizon)
+        current_regime = max(probs_dict, key=probs_dict.get)
+        confidence = probs_dict[current_regime]
+    else:
+        probs_dict = _uniform_probabilities()
+        current_regime = "Unknown"
+        confidence = max(probs_dict.values())
+    probabilities = RegimeProbabilities(**probs_dict)
 
-    # Use ensemble if available
+    # Use ensemble only when its trained horizon matches requested horizon.
+    # Otherwise keep the Markov fallback to avoid mislabeling current-state output as forecast.
     if state.ensemble_model:
         try:
-            result = state.ensemble_model.predict_current(
-                state.features, state.simplified_regimes
-            )
-            current_regime = result['prediction']
-            confidence = result['confidence'] * 0.9  # Slight discount for forecast
-            probabilities = RegimeProbabilities(**result['probabilities'])
+            if state.ensemble_model.forecast_horizon == horizon:
+                result = state.ensemble_model.predict_current(
+                    state.features, state.simplified_regimes
+                )
+                current_regime = result['prediction']
+                confidence = result['confidence']
+                probabilities = RegimeProbabilities(**result['probabilities'])
+            elif state.simplified_regimes is not None:
+                # Improve fallback start-state using ensemble's current prediction.
+                current_result = state.ensemble_model.predict_current(
+                    state.features, state.simplified_regimes
+                )
+                start_regime = current_result['prediction']
+                probs_dict = _forecast_markov_probabilities(state.simplified_regimes, start_regime, horizon)
+                current_regime = max(probs_dict, key=probs_dict.get)
+                confidence = probs_dict[current_regime]
+                probabilities = RegimeProbabilities(**probs_dict)
         except Exception as e:
             print(f"Prediction failed: {e}")
 
@@ -429,13 +519,33 @@ async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTas
         raise HTTPException(status_code=503, detail="Regime filter not loaded")
 
     try:
-        from backtest import RegimeBacktester
+        from evaluation import RegimeBacktester
+
+        if state.regime_filter.data is None or state.simplified_regimes is None:
+            raise HTTPException(status_code=503, detail="Backtest data not available")
+
+        # Backtester expects close-price series and aligned regime labels.
+        if 'XU100_Close' not in state.regime_filter.data.columns:
+            raise HTTPException(status_code=500, detail="XU100 close prices not available")
+
+        prices = state.regime_filter.data['XU100_Close']
+        regimes = state.simplified_regimes
+
+        # Apply requested date window before backtesting.
+        end_date = request.end_date or date.today()
+        start_str = str(request.start_date)
+        end_str = str(end_date)
+
+        prices = prices[(prices.index >= start_str) & (prices.index <= end_str)]
+        regimes = regimes[(regimes.index >= start_str) & (regimes.index <= end_str)]
+
+        if len(prices) == 0 or len(regimes) == 0:
+            raise HTTPException(status_code=400, detail="No data in requested date range")
 
         # Initialize backtester
         backtester = RegimeBacktester(
-            state.regime_filter.data,
-            state.regime_filter.features,
-            state.simplified_regimes
+            prices=prices,
+            regimes=regimes
         )
 
         # Run backtest
@@ -453,7 +563,7 @@ async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTas
         # Build response
         metrics = BacktestMetrics(
             total_return=results.get('total_return', 0),
-            annualized_return=results.get('annualized_return', 0),
+            annualized_return=results.get('annual_return', 0),
             sharpe_ratio=results.get('sharpe_ratio', 0),
             sortino_ratio=results.get('sortino_ratio'),
             max_drawdown=results.get('max_drawdown', 0),
@@ -464,7 +574,7 @@ async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTas
         return BacktestResponse(
             strategy=request.strategy,
             start_date=request.start_date,
-            end_date=request.end_date or date.today(),
+            end_date=end_date,
             metrics=metrics,
             regime_performance={}  # Could add per-regime breakdown
         )

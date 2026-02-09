@@ -179,13 +179,14 @@ class LSTMRegimeModel:
 
         return model
 
-    def prepare_sequences(self, features, regimes):
+    def prepare_sequences(self, features, regimes, return_dates=False):
         """
         Prepare sequence data for LSTM training
 
         Args:
             features: DataFrame of features
             regimes: Series of regime labels
+            return_dates: Whether to also return sequence end dates
 
         Returns:
             X: 3D array (samples, sequence_length, features)
@@ -215,6 +216,7 @@ class LSTMRegimeModel:
         # Create sequences
         X_sequences = []
         y_sequences = []
+        sequence_dates = []
 
         # Loop creates sequences from day i to i+seq_len-1
         # Target should be the regime at day i+seq_len-1 (already shifted forward)
@@ -230,6 +232,7 @@ class LSTMRegimeModel:
                 if not np.isnan(seq).any():
                     X_sequences.append(seq)
                     y_sequences.append(y_raw[target_idx])
+                    sequence_dates.append(features.index[target_idx])
 
         X = np.array(X_sequences)
         y = np.array(y_sequences)
@@ -238,12 +241,16 @@ class LSTMRegimeModel:
         print(f"  Sequence shape: {X.shape}")
 
         # Regime distribution
-        unique, counts = np.unique(y, return_counts=True)
-        print(f"  Regime distribution:")
-        for regime_id, count in zip(unique, counts):
-            regime_name = self.INVERSE_MAPPING[int(regime_id)]
-            pct = count / len(y) * 100
-            print(f"    {regime_name}: {count} ({pct:.1f}%)")
+        if len(y) > 0:
+            unique, counts = np.unique(y, return_counts=True)
+            print(f"  Regime distribution:")
+            for regime_id, count in zip(unique, counts):
+                regime_name = self.INVERSE_MAPPING[int(regime_id)]
+                pct = count / len(y) * 100
+                print(f"    {regime_name}: {count} ({pct:.1f}%)")
+
+        if return_dates:
+            return X, y, pd.DatetimeIndex(sequence_dates)
 
         return X, y
 
@@ -270,24 +277,57 @@ class LSTMRegimeModel:
 
         return X_train, X_test, y_train, y_test
 
+    def train_test_split_by_date(self, X, y, sequence_dates, train_end_date):
+        """
+        Split sequence data into train and test sets by date.
+
+        Args:
+            X: Sequence data
+            y: Target labels
+            sequence_dates: DatetimeIndex (one date per sequence)
+            train_end_date: Last date included in training set
+
+        Returns:
+            X_train, X_test, y_train, y_test
+        """
+        if len(sequence_dates) != len(X):
+            raise ValueError("sequence_dates length must match number of sequences")
+
+        train_end_date = pd.to_datetime(train_end_date)
+        sequence_dates = pd.DatetimeIndex(sequence_dates)
+
+        train_mask = sequence_dates <= train_end_date
+        test_mask = sequence_dates > train_end_date
+
+        X_train, X_test = X[train_mask], X[test_mask]
+        y_train, y_test = y[train_mask], y[test_mask]
+
+        print(f"\nTrain/Test split by date ({train_end_date.date()}):")
+        print(f"  Train: {len(X_train)} sequences")
+        print(f"  Test:  {len(X_test)} sequences")
+
+        return X_train, X_test, y_train, y_test
+
     def _scale_sequences(self, X_train, X_test):
         """Scale features using StandardScaler"""
-        # Reshape to 2D for scaling
-        n_train = X_train.shape[0]
-        n_test = X_test.shape[0]
-
-        X_train_2d = X_train.reshape(-1, self.n_features)
-        X_test_2d = X_test.reshape(-1, self.n_features)
-
         # Fit scaler on training data only
-        X_train_scaled = self.scaler.fit_transform(X_train_2d)
-        X_test_scaled = self.scaler.transform(X_test_2d)
+        X_train_2d = X_train.reshape(-1, self.n_features)
+        self.scaler.fit(X_train_2d)
 
-        # Reshape back to 3D
-        X_train_scaled = X_train_scaled.reshape(n_train, self.sequence_length, self.n_features)
-        X_test_scaled = X_test_scaled.reshape(n_test, self.sequence_length, self.n_features)
+        X_train_scaled = self._transform_sequences(X_train)
+        X_test_scaled = self._transform_sequences(X_test)
 
         return X_train_scaled, X_test_scaled
+
+    def _transform_sequences(self, X):
+        """Transform pre-shaped sequences with fitted scaler."""
+        if X.shape[0] == 0:
+            return X.copy()
+
+        n_samples = X.shape[0]
+        X_2d = X.reshape(-1, self.n_features)
+        X_scaled = self.scaler.transform(X_2d)
+        return X_scaled.reshape(n_samples, self.sequence_length, self.n_features)
 
     def train(self, X_train, y_train, X_val=None, y_val=None,
               epochs=50, batch_size=32, early_stopping_patience=10):

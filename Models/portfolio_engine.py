@@ -17,10 +17,12 @@ import argparse
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import os
 import sys
 import time
 import warnings
 import importlib.util
+import json
 warnings.filterwarnings('ignore')
 
 # Add current directory to path
@@ -37,15 +39,20 @@ from signals.donchian_signals import build_donchian_signals
 from signals.xu100_signals import build_xu100_signals
 from signals.trend_value_signals import build_trend_value_signals
 from signals.breakout_value_signals import build_breakout_value_signals
-from signals.currency_rotation_signals import build_currency_rotation_signals
 from signals.dividend_rotation_signals import build_dividend_rotation_signals
 from signals.macro_hedge_signals import build_macro_hedge_signals
 from signals.quality_momentum_signals import build_quality_momentum_signals
 from signals.quality_value_signals import build_quality_value_signals
 from signals.small_cap_momentum_signals import build_small_cap_momentum_signals
-from signals.size_rotation_signals import build_size_rotation_signals
+from signals.size_rotation_signals import (
+    build_size_rotation_signals,
+    build_market_cap_panel as build_size_market_cap_panel,
+    get_size_buckets_for_date,
+    SIZE_LIQUIDITY_QUANTILE,
+)
 from signals.size_rotation_momentum_signals import build_size_rotation_momentum_signals
 from signals.size_rotation_quality_signals import build_size_rotation_quality_signals
+from signals.five_factor_rotation_signals import build_five_factor_rotation_signals
 
 
 
@@ -91,13 +98,19 @@ DEFAULT_PORTFOLIO_OPTIONS = {
     'use_liquidity_filter': True,
     'liquidity_quantile': 0.25,
 
-    # Transaction costs
+    # Transaction costs - market-cap-based slippage
     'use_slippage': True,
-    'slippage_bps': 5.0,
+    'slippage_bps': 5.0,  # Base slippage for large caps
+    # Market-cap-based slippage (applies to ALL factors now)
+    'use_mcap_slippage': True,  # Enable market-cap-based differentiated slippage
+    'small_cap_slippage_bps': 20.0,  # Higher slippage for small caps (illiquid)
+    'mid_cap_slippage_bps': 10.0,  # Medium slippage for mid caps
 
     # Portfolio size
     'top_n': 20,
 }
+
+SIZE_ROTATION_FACTORS = {"size_rotation", "size_rotation_momentum", "size_rotation_quality"}
 
 # Legacy constants (for backward compatibility)
 TOP_N = 20
@@ -314,6 +327,186 @@ def compute_yearly_metrics(returns, benchmark_returns=None, xautry_returns=None)
     return pd.DataFrame(yearly_rows).sort_values("Year")
 
 
+def compute_capm_metrics(
+    strategy_returns: pd.Series,
+    market_returns: pd.Series,
+    risk_free_daily: float = 0.0,
+) -> dict:
+    """
+    Compute CAPM metrics using OLS:
+        (R_i - R_f) = alpha + beta * (R_m - R_f) + epsilon
+
+    Args:
+        strategy_returns: Daily strategy returns
+        market_returns: Daily market benchmark returns (e.g., XU100)
+        risk_free_daily: Daily risk-free rate (default 0.0)
+
+    Returns:
+        dict with CAPM metrics (beta, alpha, r_squared, correlation, n_obs)
+    """
+    df = pd.DataFrame({
+        "strategy": strategy_returns,
+        "market": market_returns,
+    }).dropna()
+
+    n_obs = len(df)
+    if n_obs < 30:
+        return {
+            "n_obs": n_obs,
+            "alpha_daily": np.nan,
+            "alpha_annual": np.nan,
+            "beta": np.nan,
+            "r_squared": np.nan,
+            "correlation": np.nan,
+            "residual_vol_annual": np.nan,
+        }
+
+    y = (df["strategy"] - risk_free_daily).values.astype(float)
+    x = (df["market"] - risk_free_daily).values.astype(float)
+
+    x_var = np.var(x, ddof=1)
+    if not np.isfinite(x_var) or x_var <= 0:
+        return {
+            "n_obs": n_obs,
+            "alpha_daily": np.nan,
+            "alpha_annual": np.nan,
+            "beta": np.nan,
+            "r_squared": np.nan,
+            "correlation": np.nan,
+            "residual_vol_annual": np.nan,
+        }
+
+    # OLS with intercept
+    X = np.column_stack([np.ones_like(x), x])
+    alpha_daily, beta = np.linalg.lstsq(X, y, rcond=None)[0]
+    y_hat = alpha_daily + beta * x
+    resid = y - y_hat
+
+    ss_res = np.sum(resid ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+    r_squared = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else np.nan
+    correlation = np.corrcoef(y, x)[0, 1] if n_obs > 1 else np.nan
+
+    alpha_annual = (1.0 + alpha_daily) ** 252 - 1.0 if np.isfinite(alpha_daily) else np.nan
+    residual_vol_annual = np.std(resid, ddof=1) * np.sqrt(252) if n_obs > 1 else np.nan
+
+    return {
+        "n_obs": int(n_obs),
+        "alpha_daily": float(alpha_daily),
+        "alpha_annual": float(alpha_annual),
+        "beta": float(beta),
+        "r_squared": float(r_squared) if np.isfinite(r_squared) else np.nan,
+        "correlation": float(correlation) if np.isfinite(correlation) else np.nan,
+        "residual_vol_annual": float(residual_vol_annual) if np.isfinite(residual_vol_annual) else np.nan,
+    }
+
+
+def compute_rolling_beta_series(
+    strategy_returns: pd.Series,
+    market_returns: pd.Series,
+    window: int = 252,
+    min_periods: int = 126,
+    risk_free_daily: float = 0.0,
+) -> pd.Series:
+    """
+    Compute rolling CAPM beta series:
+        beta_t = Cov(R_i - R_f, R_m - R_f)_t / Var(R_m - R_f)_t
+
+    Args:
+        strategy_returns: Daily strategy returns
+        market_returns: Daily market returns
+        window: Rolling window length in trading days
+        min_periods: Minimum observations required to compute beta
+        risk_free_daily: Daily risk-free rate
+
+    Returns:
+        pd.Series of rolling beta indexed by date
+    """
+    df = pd.DataFrame({
+        "strategy": strategy_returns,
+        "market": market_returns,
+    }).dropna()
+
+    if df.empty:
+        return pd.Series(dtype=float)
+
+    x = df["market"] - risk_free_daily
+    y = df["strategy"] - risk_free_daily
+
+    cov_xy = y.rolling(window=window, min_periods=min_periods).cov(x)
+    var_x = x.rolling(window=window, min_periods=min_periods).var()
+    beta = cov_xy / var_x.replace(0.0, np.nan)
+    beta = beta.replace([np.inf, -np.inf], np.nan)
+    beta.name = "Rolling_Beta"
+    return beta
+
+
+def compute_yearly_rolling_beta_metrics(rolling_beta: pd.Series) -> pd.DataFrame:
+    """
+    Summarize rolling beta by calendar year.
+
+    Args:
+        rolling_beta: Daily rolling beta series
+
+    Returns:
+        DataFrame with yearly rolling-beta statistics
+    """
+    if rolling_beta is None or rolling_beta.empty:
+        return pd.DataFrame(
+            columns=[
+                "Year",
+                "Observations",
+                "Beta_Start",
+                "Beta_End",
+                "Beta_Mean",
+                "Beta_Median",
+                "Beta_Min",
+                "Beta_Max",
+                "Beta_Std",
+                "Beta_Change",
+            ]
+        )
+
+    s = rolling_beta.dropna()
+    if s.empty:
+        return pd.DataFrame(
+            columns=[
+                "Year",
+                "Observations",
+                "Beta_Start",
+                "Beta_End",
+                "Beta_Mean",
+                "Beta_Median",
+                "Beta_Min",
+                "Beta_Max",
+                "Beta_Std",
+                "Beta_Change",
+            ]
+        )
+
+    s = s.sort_index()
+    rows = []
+    for year, grp in s.groupby(s.index.year):
+        if grp.empty:
+            continue
+        beta_start = grp.iloc[0]
+        beta_end = grp.iloc[-1]
+        rows.append({
+            "Year": int(year),
+            "Observations": int(len(grp)),
+            "Beta_Start": float(beta_start),
+            "Beta_End": float(beta_end),
+            "Beta_Mean": float(grp.mean()),
+            "Beta_Median": float(grp.median()),
+            "Beta_Min": float(grp.min()),
+            "Beta_Max": float(grp.max()),
+            "Beta_Std": float(grp.std(ddof=1)) if len(grp) > 1 else np.nan,
+            "Beta_Change": float(beta_end - beta_start),
+        })
+
+    return pd.DataFrame(rows).sort_values("Year")
+
+
 # ============================================================================
 # CONFIG LOADING
 # ============================================================================
@@ -387,6 +580,8 @@ class PortfolioEngine:
         
         # Store factor returns for correlation analysis
         self.factor_returns = {}
+        self.factor_capm = {}
+        self.factor_yearly_rolling_beta = {}
         
     def load_all_data(self):
         """Load all data once"""
@@ -457,12 +652,30 @@ class PortfolioEngine:
         # Use custom dates if specified, otherwise use engine defaults
         factor_start_date = pd.Timestamp(custom_start) if custom_start else self.start_date
         factor_end_date = pd.Timestamp(custom_end) if custom_end else self.end_date
+
+        # Optional walk-forward timeline clamp (used by five_factor_rotation)
+        walk_forward_cfg = config.get("walk_forward", {}) if isinstance(config.get("walk_forward", {}), dict) else {}
+        if factor_name == "five_factor_rotation" and walk_forward_cfg.get("enabled", False):
+            first_test_year = walk_forward_cfg.get("first_test_year")
+            last_test_year = walk_forward_cfg.get("last_test_year")
+            if first_test_year is not None:
+                wf_start = pd.Timestamp(year=int(first_test_year), month=1, day=1)
+                if factor_start_date < wf_start:
+                    print(f"Walk-forward start clamp: {factor_start_date.date()} -> {wf_start.date()}")
+                    factor_start_date = wf_start
+            if last_test_year is not None:
+                wf_end = pd.Timestamp(year=int(last_test_year), month=12, day=31)
+                if factor_end_date > wf_end:
+                    print(f"Walk-forward end clamp: {factor_end_date.date()} -> {wf_end.date()}")
+                    factor_end_date = wf_end
         
         # Display timeline
         if custom_start or custom_end:
             print(f"Custom timeline: {factor_start_date.date()} to {factor_end_date.date()}")
         
         start_time = time.time()
+        factor_details = {}
+        custom_signal_bundle = None
         
         # Build signals
         dates = self.close_df.index
@@ -520,7 +733,7 @@ class PortfolioEngine:
             signals = build_quality_value_signals(self.close_df, self.fundamentals, dates, self.loader)
         elif factor_name == "small_cap_momentum":
             # Small Cap Momentum: Size + Momentum composite
-            signals = build_small_cap_momentum_signals(self.close_df, self.fundamentals, dates, self.loader)
+            signals = build_small_cap_momentum_signals(self.close_df, dates, self.loader)
         elif factor_name == "size_rotation":
             # Size Rotation: Dynamically switches between small and large caps
             signals = build_size_rotation_signals(self.close_df, dates, self.loader)
@@ -530,6 +743,36 @@ class PortfolioEngine:
         elif factor_name == "size_rotation_quality":
             # Size Rotation Quality: Momentum + Profitability within winning size segment
             signals = build_size_rotation_quality_signals(self.close_df, self.fundamentals, dates, self.loader)
+        elif factor_name == "five_factor_rotation":
+            # Five-factor side rotation: select winning side across 5 classic axes
+            cache_cfg = config.get("construction_cache", {})
+            debug_cfg = config.get("debug", {})
+            debug_env = os.getenv("FIVE_FACTOR_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+            debug_enabled = bool(debug_cfg.get("enabled", False) or debug_env)
+            signals, factor_details = build_five_factor_rotation_signals(
+                self.close_df,
+                dates,
+                self.loader,
+                fundamentals=self.fundamentals,
+                volume_df=self.volume_df,
+                use_construction_cache=cache_cfg.get("enabled", True),
+                force_rebuild_construction_cache=cache_cfg.get("force_rebuild", False),
+                construction_cache_path=cache_cfg.get("path"),
+                mwu_walkforward_config=walk_forward_cfg,
+                return_details=True,
+                debug=debug_enabled,
+            )
+        elif factor_name == "gold_fund_arbitrage":
+            signal_params = config.get("signal_params", {})
+            custom_signal_bundle = build_gold_fund_arbitrage_signals(
+                dates=dates,
+                data_dir=self.data_dir,
+                **signal_params,
+            )
+            signals = custom_signal_bundle["signals"]
+            factor_details["gold_tracking_metrics"] = custom_signal_bundle.get("tracking_metrics")
+            factor_details["gold_spread_zscores"] = custom_signal_bundle.get("spread_z")
+            factor_details["gold_selected_codes"] = custom_signal_bundle.get("selected_codes", [])
         else:
             raise ValueError(f"Unknown factor: {factor_name}")
 
@@ -537,7 +780,34 @@ class PortfolioEngine:
         portfolio_options = config.get('portfolio_options', {})
 
         # Run backtest with custom timeline and portfolio options
-        results = self._run_backtest(signals, factor_name, rebalance_freq, factor_start_date, factor_end_date, portfolio_options)
+        if factor_name == "gold_fund_arbitrage":
+            results = self._run_gold_fund_arbitrage_backtest(
+                signal_bundle=custom_signal_bundle,
+                factor_name=factor_name,
+                rebalance_freq=rebalance_freq,
+                start_date=factor_start_date,
+                end_date=factor_end_date,
+                portfolio_options=portfolio_options,
+            )
+        else:
+            results = self._run_backtest(
+                signals,
+                factor_name,
+                rebalance_freq,
+                factor_start_date,
+                factor_end_date,
+                portfolio_options,
+            )
+        if factor_details:
+            results.update(factor_details)
+            if 'yearly_axis_winners' in results and isinstance(results['yearly_axis_winners'], pd.DataFrame):
+                yearly_axis = results['yearly_axis_winners']
+                if not yearly_axis.empty and 'Year' in yearly_axis.columns:
+                    start_year = int(factor_start_date.year)
+                    end_year = int(factor_end_date.year)
+                    results['yearly_axis_winners'] = yearly_axis[
+                        (yearly_axis['Year'] >= start_year) & (yearly_axis['Year'] <= end_year)
+                    ].copy()
         
         # Save results
         self.save_results(results, factor_name)
@@ -576,7 +846,13 @@ class PortfolioEngine:
         print(f"   Inverse Vol Sizing: {'ON' if opts['use_inverse_vol_sizing'] else 'OFF'}")
         print(f"   Stop Loss: {'ON (' + str(int(opts['stop_loss_threshold']*100)) + '%)' if opts['use_stop_loss'] else 'OFF'}")
         print(f"   Liquidity Filter: {'ON' if opts['use_liquidity_filter'] else 'OFF'}")
-        print(f"   Slippage: {'ON (' + str(opts['slippage_bps']) + ' bps)' if opts['use_slippage'] else 'OFF'}")
+        if opts['use_slippage']:
+            if opts.get('use_mcap_slippage', True):
+                print(f"   Slippage: ON (Large: {opts['slippage_bps']} bps, Mid: {opts.get('mid_cap_slippage_bps', 10.0)} bps, Small: {opts.get('small_cap_slippage_bps', 20.0)} bps)")
+            else:
+                print(f"   Slippage: ON ({opts['slippage_bps']} bps flat)")
+        else:
+            print(f"   Slippage: OFF")
         print(f"   Top N Stocks: {opts['top_n']}")
 
         # Use provided dates or fall back to engine defaults
@@ -661,6 +937,21 @@ class PortfolioEngine:
         slippage_factor = opts['slippage_bps'] / 10000.0 if opts['use_slippage'] else 0.0
         top_n = opts['top_n']
         stop_loss_threshold = opts['stop_loss_threshold']
+        small_cap_slippage_bps = max(
+            float(opts.get('small_cap_slippage_bps', opts['slippage_bps'])),
+            float(opts['slippage_bps']),
+        )
+
+        # Market-cap-based slippage for ALL factors (more realistic transaction costs)
+        mcap_slippage_panel = None
+        mcap_slippage_liquidity = None
+        use_mcap_slippage = opts.get('use_mcap_slippage', True) and opts['use_slippage']
+        mid_cap_slippage_bps = opts.get('mid_cap_slippage_bps', 10.0)
+
+        if use_mcap_slippage:
+            print("   Preparing market-cap panel for size-based slippage...")
+            mcap_slippage_panel = build_size_market_cap_panel(self.close_df, trading_days, self.loader)
+            mcap_slippage_liquidity = self.volume_df.reindex(index=trading_days, columns=self.close_df.columns)
 
         for i, date in enumerate(trading_days[:-1]):
             regime = regime_series_lagged.get(date, 'Choppy')
@@ -768,10 +1059,44 @@ class PortfolioEngine:
                         if pd.notna(ret):
                             stock_return += ret * weights[ticker]
 
-                # Apply slippage (optional)
+                # Apply slippage (optional) - market-cap-based for all factors
                 if opts['use_slippage'] and is_rebalance_day and old_selected:
-                    turnover = len(set(active_holdings) - old_selected) / max(len(active_holdings), 1)
-                    stock_return -= turnover * slippage_factor * 2
+                    new_positions = list(set(active_holdings) - old_selected)
+                    if new_positions:
+                        turnover = len(new_positions) / max(len(active_holdings), 1)
+
+                        if (
+                            use_mcap_slippage
+                            and mcap_slippage_panel is not None
+                            and date in mcap_slippage_panel.index
+                        ):
+                            mcaps = mcap_slippage_panel.loc[date]
+                            liq = (
+                                mcap_slippage_liquidity.loc[date]
+                                if mcap_slippage_liquidity is not None and date in mcap_slippage_liquidity.index
+                                else pd.Series(dtype=float)
+                            )
+                            _, small_caps, _ = get_size_buckets_for_date(
+                                mcaps,
+                                liq,
+                                liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+                            )
+
+                            # Determine slippage per stock based on market cap
+                            def get_stock_slippage(ticker):
+                                if ticker in small_caps:
+                                    return small_cap_slippage_bps
+                                # Check if mid-cap (between small and large)
+                                if ticker in mcaps.index and not mcaps[ticker] != mcaps[ticker]:
+                                    mcap_pct = mcaps.rank(pct=True).get(ticker, 0.5)
+                                    if mcap_pct < 0.7:  # Bottom 70% but not small cap
+                                        return mid_cap_slippage_bps
+                                return opts['slippage_bps']
+
+                            avg_bps = np.mean([get_stock_slippage(t) for t in new_positions])
+                            stock_return -= turnover * (avg_bps / 10000.0) * 2
+                        else:
+                            stock_return -= turnover * slippage_factor * 2
 
                 # Blend with XAU/TRY (only if regime filter is active)
                 xautry_ret = xautry_fwd_ret.loc[date] if date in xautry_fwd_ret.index else 0.0
@@ -897,6 +1222,259 @@ class PortfolioEngine:
             'returns_df': returns_df,
             'holdings_history': holdings_history,
         }
+
+    def _run_gold_fund_arbitrage_backtest(
+        self,
+        signal_bundle: dict,
+        factor_name: str,
+        rebalance_freq: str = 'daily',
+        start_date: pd.Timestamp = None,
+        end_date: pd.Timestamp = None,
+        portfolio_options: dict = None,
+    ):
+        """
+        Backtest TEFAS gold-fund mean-reversion strategy versus XAU/TRY.
+
+        Includes:
+        - Transaction costs via turnover * bps
+        - TEFAS execution delay (cut-off timing proxy)
+        """
+        if not signal_bundle:
+            raise ValueError("gold_fund_arbitrage requires a non-empty signal bundle")
+
+        opts = DEFAULT_PORTFOLIO_OPTIONS.copy()
+        if portfolio_options:
+            opts.update(portfolio_options)
+
+        tefas_cost_bps = float(opts.get('tefas_transaction_cost_bps', opts.get('slippage_bps', 5.0)))
+        execution_lag = max(int(opts.get('tefas_execution_lag_days', 1)), 0)
+        hold_xau_when_flat = bool(opts.get('hold_xau_when_flat', False))
+        use_costs = bool(opts.get('use_slippage', True))
+        pair_use_beta_hedge = bool(opts.get('pair_use_beta_hedge', True))
+        pair_target_gross = float(opts.get('pair_target_gross_exposure', 1.0))
+        pair_beta_floor = float(opts.get('pair_beta_floor', 0.1))
+        pair_beta_cap = float(opts.get('pair_beta_cap', 2.0))
+
+        print(f"\n🔧 Portfolio Engineering Settings:")
+        print(f"   Strategy Type: TEFAS Gold Fund Arbitrage")
+        print(f"   Decision Frequency: {rebalance_freq}")
+        print(f"   TEFAS Execution Lag: {execution_lag} day(s)")
+        print(f"   Transaction Costs: {'ON' if use_costs else 'OFF'} ({tefas_cost_bps:.2f} bps)")
+        print(f"   Hold XAU/TRY when flat: {'ON' if hold_xau_when_flat else 'OFF (cash)'}")
+        print(f"   Pair Hedge: {'Beta' if pair_use_beta_hedge else '1:1'}")
+        print(f"   Pair Target Gross Exposure: {pair_target_gross:.2f}")
+        print(f"   Vol Targeting: {'ON (' + str(int(opts['target_downside_vol']*100)) + '%)' if opts['use_vol_targeting'] else 'OFF'}")
+
+        backtest_start = start_date if start_date is not None else self.start_date
+        backtest_end = end_date if end_date is not None else self.end_date
+
+        signals = signal_bundle["signals"].copy().sort_index()
+        fund_prices = signal_bundle["fund_prices"].copy().sort_index()
+        xau_prices = signal_bundle["xau_prices"].copy().sort_index()
+
+        # Restrict to requested timeline and valid data rows.
+        date_mask = (signals.index >= backtest_start) & (signals.index <= backtest_end)
+        trading_days = signals.index[date_mask]
+        if trading_days.empty:
+            raise ValueError("No trading days available for selected timeline.")
+
+        signals = signals.reindex(trading_days).fillna(0.0)
+        fund_prices = fund_prices.reindex(trading_days)
+        xau_prices = xau_prices.reindex(trading_days).ffill()
+
+        valid_rows = fund_prices.notna().any(axis=1) & xau_prices.notna()
+        signals = signals.loc[valid_rows]
+        fund_prices = fund_prices.loc[valid_rows]
+        xau_prices = xau_prices.loc[valid_rows]
+        trading_days = signals.index
+
+        if len(trading_days) < 2:
+            raise ValueError("Insufficient overlap between fund prices and XAU/TRY for backtest.")
+
+        # Rebalance control: daily, monthly, or quarterly decision updates.
+        if rebalance_freq == 'monthly':
+            rebalance_days = identify_monthly_rebalance_days(trading_days)
+        elif rebalance_freq == 'quarterly':
+            rebalance_days = self._identify_quarterly_rebalance_days(trading_days)
+        else:
+            rebalance_days = set(trading_days)
+
+        if rebalance_freq in {'monthly', 'quarterly'}:
+            desired_pos = pd.DataFrame(0.0, index=trading_days, columns=signals.columns)
+            current_target = pd.Series(0.0, index=signals.columns)
+            for d in trading_days:
+                if d in rebalance_days:
+                    current_target = signals.loc[d].fillna(0.0).clip(lower=-1.0, upper=1.0)
+                desired_pos.loc[d] = current_target.values
+        else:
+            desired_pos = signals.copy().fillna(0.0).clip(lower=-1.0, upper=1.0)
+
+        # TEFAS cut-off timing proxy: position change is executed with lag.
+        executed_pos = desired_pos.shift(execution_lag).fillna(0.0)
+        active_count = executed_pos.abs().sum(axis=1)
+
+        # Equal-abs allocation across active pairs. Sign determines long/short fund leg.
+        fund_weights = executed_pos.div(active_count.replace(0.0, np.nan), axis=0).fillna(0.0)
+
+        # Hedge each fund leg with opposite XAU/TRY exposure.
+        beta_map = signal_bundle.get("selected_beta_map", {}) or {}
+        beta_vec = pd.Series(beta_map, dtype=float).reindex(fund_weights.columns)
+        beta_vec = beta_vec.replace([np.inf, -np.inf], np.nan).fillna(1.0).clip(lower=pair_beta_floor, upper=pair_beta_cap)
+        if not pair_use_beta_hedge:
+            beta_vec = pd.Series(1.0, index=fund_weights.columns, dtype=float)
+
+        raw_gold_weight = -fund_weights.mul(beta_vec, axis=1).sum(axis=1)
+
+        # Scale to target gross exposure (fund gross + gold gross).
+        raw_gross = fund_weights.abs().sum(axis=1) + raw_gold_weight.abs()
+        target_gross = max(pair_target_gross, 0.0)
+        scale = (target_gross / raw_gross.replace(0.0, np.nan)).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        fund_weights = fund_weights.mul(scale, axis=0)
+        gold_weight = raw_gold_weight * scale
+
+        fund_fwd_ret = (fund_prices.shift(-1) / fund_prices - 1.0).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        xautry_fwd_ret = (xau_prices.shift(-1) / xau_prices - 1.0).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+        fund_leg_return = (fund_weights * fund_fwd_ret.reindex_like(fund_weights)).sum(axis=1)
+        gold_leg_return = gold_weight * xautry_fwd_ret
+        gross_return = fund_leg_return + gold_leg_return
+        if hold_xau_when_flat:
+            flat_mask = active_count == 0
+            gross_return = gross_return.where(~flat_mask, xautry_fwd_ret)
+
+        fund_turnover = fund_weights.diff().abs().sum(axis=1)
+        gold_turnover = gold_weight.diff().abs()
+        turnover = fund_turnover + gold_turnover
+        turnover.iloc[0] = fund_weights.iloc[0].abs().sum() + abs(float(gold_weight.iloc[0]))
+        transaction_cost = turnover * (tefas_cost_bps / 10000.0) if use_costs else pd.Series(0.0, index=turnover.index)
+        raw_returns = gross_return - transaction_cost
+
+        # Post-hedge residual beta should be near zero.
+        net_gold_beta = fund_weights.mul(beta_vec, axis=1).sum(axis=1) + gold_weight
+
+        returns_df = pd.DataFrame(
+            {
+                'return': raw_returns,
+                'xautry_return': xautry_fwd_ret,
+                'regime': 'GoldArb',
+                'n_stocks': active_count.astype(int),
+                'allocation': 1.0,
+                'turnover': turnover,
+                'transaction_cost': transaction_cost,
+                'fund_leg_return': fund_leg_return,
+                'gold_leg_return': gold_leg_return,
+                'gold_weight': gold_weight,
+                'gross_exposure': fund_weights.abs().sum(axis=1) + gold_weight.abs(),
+                'net_gold_beta': net_gold_beta,
+            },
+            index=trading_days,
+        )
+
+        # Apply volatility targeting (optional)
+        if opts['use_vol_targeting']:
+            print(f"\n📈 Applying {opts['target_downside_vol']*100:.0f}% downside volatility targeting...")
+            returns = apply_downside_vol_targeting(
+                raw_returns,
+                target_vol=opts['target_downside_vol'],
+                lookback=opts['vol_lookback'],
+                vol_floor=opts['vol_floor'],
+                vol_cap=opts['vol_cap'],
+            )
+        else:
+            returns = raw_returns
+
+        equity = (1.0 + returns).cumprod()
+        total_return = equity.iloc[-1] - 1.0
+        n_years = len(returns) / 252
+        cagr = (1.0 + total_return) ** (1.0 / n_years) - 1.0 if n_years > 0 else 0.0
+        sharpe = returns.mean() / returns.std() * np.sqrt(252) if returns.std() > 0 else 0.0
+
+        downside = returns[returns < 0]
+        sortino = returns.mean() / downside.std() * np.sqrt(252) if len(downside) > 0 and downside.std() > 0 else 0.0
+        drawdown = equity / equity.cummax() - 1.0
+        max_dd = drawdown.min()
+        win_rate = (returns > 0).sum() / len(returns) if len(returns) > 0 else 0.0
+
+        pos_delta = executed_pos.diff().fillna(executed_pos)
+        # +1->-1 flip counts as 2 trades (close + open), which is intended.
+        trade_count = int(pos_delta.abs().sum().sum())
+        rebalance_count = int((turnover > 0).sum())
+
+        holdings_history = []
+        for d in trading_days:
+            row = fund_weights.loc[d]
+            actives = row[row != 0]
+            if not actives.empty:
+                for ticker, w in actives.items():
+                    holdings_history.append(
+                        {
+                            'date': d,
+                            'ticker': ticker,
+                            'weight': float(w),
+                            'regime': 'GoldArb',
+                            'allocation': 1.0,
+                        },
+                    )
+                gw = float(gold_weight.loc[d])
+                if gw != 0.0:
+                    holdings_history.append(
+                        {
+                            'date': d,
+                            'ticker': 'XAU/TRY',
+                            'weight': gw,
+                            'regime': 'GoldArb',
+                            'allocation': 1.0,
+                        },
+                    )
+            else:
+                holdings_history.append(
+                    {
+                        'date': d,
+                        'ticker': 'XAU/TRY' if hold_xau_when_flat else 'CASH',
+                        'weight': 1.0,
+                        'regime': 'GoldArb',
+                        'allocation': 1.0,
+                    },
+                )
+
+        regime_perf = {
+            'GoldArb': {
+                'count': int(len(returns)),
+                'mean_return': float(returns.mean() * 252),
+                'total_return': float((1.0 + returns).prod() - 1.0),
+                'win_rate': float((returns > 0).sum() / len(returns)) if len(returns) > 0 else 0.0,
+            },
+        }
+
+        print(f"\n📊 Results:")
+        print(f"   Period: {trading_days[0].date()} to {trading_days[-1].date()}")
+        print(f"   Trading days: {len(trading_days)}")
+        print(f"   Total Return: {total_return*100:.1f}%")
+        print(f"   CAGR: {cagr*100:.2f}%")
+        print(f"   Sharpe: {sharpe:.2f}")
+        print(f"   Sortino: {sortino:.2f}")
+        print(f"   Max Drawdown: {max_dd*100:.2f}%")
+        print(f"   Win Rate: {win_rate*100:.1f}%")
+        print(f"   Rebalances: {rebalance_count}")
+        print(f"   Total Trades: {trade_count}")
+        print(f"   Total Cost Drag: {transaction_cost.sum()*100:.2f}%")
+
+        return {
+            'returns': returns,
+            'equity': equity,
+            'total_return': total_return,
+            'cagr': cagr,
+            'sharpe': sharpe,
+            'sortino': sortino,
+            'max_drawdown': max_dd,
+            'win_rate': win_rate,
+            'xautry_returns': returns_df['xautry_return'],
+            'regime_performance': regime_perf,
+            'rebalance_count': rebalance_count,
+            'trade_count': trade_count,
+            'returns_df': returns_df,
+            'holdings_history': holdings_history,
+        }
     
     def _identify_quarterly_rebalance_days(self, trading_days: pd.DatetimeIndex) -> set:
         """Identify quarterly rebalancing days"""
@@ -945,6 +1523,19 @@ class PortfolioEngine:
         if self.xu100_prices is not None:
             xu100_returns = self.xu100_prices.shift(-1) / self.xu100_prices - 1.0
             xu100_returns = xu100_returns.reindex(returns.index)
+
+        # Factor-specific primary benchmark selection
+        benchmark_name = "XU100"
+        benchmark_returns = xu100_returns
+        yearly_bench_col = "XU100_Return"
+        yearly_excess_col = "Excess_vs_XU100"
+        yearly_table_label = "XU100"
+        if factor_name == "gold_fund_arbitrage":
+            benchmark_name = "XAU/TRY"
+            benchmark_returns = xautry_returns
+            yearly_bench_col = "XAUTRY_Return"
+            yearly_excess_col = "Excess_vs_XAUTRY"
+            yearly_table_label = "XAUTRY"
         
         # Save equity curve
         pd.DataFrame({'Equity': results['equity']}).to_csv(output_dir / 'equity_curve.csv')
@@ -961,6 +1552,66 @@ class PortfolioEngine:
         # Save yearly metrics
         yearly_metrics = compute_yearly_metrics(returns, xu100_returns, xautry_returns)
         yearly_metrics.to_csv(output_dir / 'yearly_metrics.csv', index=False)
+
+        # Save CAPM metrics (strategy vs primary benchmark)
+        capm_metrics = compute_capm_metrics(returns, benchmark_returns) if benchmark_returns is not None else {
+            "n_obs": 0,
+            "alpha_daily": np.nan,
+            "alpha_annual": np.nan,
+            "beta": np.nan,
+            "r_squared": np.nan,
+            "correlation": np.nan,
+            "residual_vol_annual": np.nan,
+        }
+        capm_metrics["benchmark"] = benchmark_name
+        capm_df = pd.DataFrame([capm_metrics])
+        capm_df.to_csv(output_dir / 'capm_metrics.csv', index=False)
+        self.factor_capm[factor_name] = capm_metrics
+
+        # Save rolling beta (daily) + yearly rolling beta summary
+        yearly_rolling_beta = compute_yearly_rolling_beta_metrics(pd.Series(dtype=float))
+        if benchmark_returns is not None:
+            rolling_beta = compute_rolling_beta_series(
+                strategy_returns=returns,
+                market_returns=benchmark_returns,
+                window=252,
+                min_periods=126,
+                risk_free_daily=0.0,
+            )
+            rolling_beta_df = rolling_beta.to_frame().reset_index()
+            rolling_beta_df.columns = ['date', 'Rolling_Beta']
+            rolling_beta_df.to_csv(output_dir / 'rolling_beta.csv', index=False)
+
+            yearly_rolling_beta = compute_yearly_rolling_beta_metrics(rolling_beta)
+            yearly_rolling_beta.to_csv(output_dir / 'yearly_rolling_beta.csv', index=False)
+        else:
+            pd.DataFrame(columns=['date', 'Rolling_Beta']).to_csv(output_dir / 'rolling_beta.csv', index=False)
+            yearly_rolling_beta.to_csv(output_dir / 'yearly_rolling_beta.csv', index=False)
+
+        self.factor_yearly_rolling_beta[factor_name] = yearly_rolling_beta.copy()
+
+        # Save factor-specific yearly winner report (if provided)
+        if 'yearly_axis_winners' in results:
+            yearly_axis = results['yearly_axis_winners']
+            if isinstance(yearly_axis, pd.DataFrame) and not yearly_axis.empty:
+                yearly_axis.to_csv(output_dir / 'yearly_axis_winners.csv', index=False)
+
+                with open(output_dir / 'yearly_axis_winners.txt', 'w') as f:
+                    f.write("="*70 + "\n")
+                    f.write("FIVE-FACTOR YEARLY AXIS WINNERS\n")
+                    f.write("="*70 + "\n\n")
+                    for year in sorted(yearly_axis['Year'].unique()):
+                        f.write(f"{int(year)}\n")
+                        f.write("-"*70 + "\n")
+                        year_rows = yearly_axis[yearly_axis['Year'] == year].sort_values('Axis')
+                        for _, row in year_rows.iterrows():
+                            f.write(
+                                f"{row['Axis']:<14} Winner: {row['Winner']:<12} | "
+                                f"{row['High_Side']}: {row['High_Side_Return']:+.2%} | "
+                                f"{row['Low_Side']}: {row['Low_Side_Return']:+.2%} | "
+                                f"Spread: {row['Spread_Winner_Minus_Loser']:+.2%}\n"
+                            )
+                        f.write("\n")
         
         # Save regime performance
         regime_perf = pd.DataFrame(results['regime_performance']).T
@@ -976,6 +1627,22 @@ class PortfolioEngine:
                 index='date', columns='ticker', values='weight', aggfunc='first'
             ).fillna(0)
             holdings_pivot.to_csv(output_dir / 'holdings_matrix.csv')
+
+        # Save detailed per-day diagnostics when provided
+        if isinstance(results.get('returns_df'), pd.DataFrame) and not results['returns_df'].empty:
+            results['returns_df'].to_csv(output_dir / 'returns_detailed.csv')
+
+        # Save gold-arbitrage specific analytics when available
+        if isinstance(results.get('gold_tracking_metrics'), pd.DataFrame) and not results['gold_tracking_metrics'].empty:
+            results['gold_tracking_metrics'].to_csv(output_dir / 'gold_tracking_metrics.csv', index=False)
+
+        if isinstance(results.get('gold_spread_zscores'), pd.DataFrame) and not results['gold_spread_zscores'].empty:
+            results['gold_spread_zscores'].to_csv(output_dir / 'gold_spread_zscores.csv')
+
+        if 'gold_selected_codes' in results:
+            selected_codes = results.get('gold_selected_codes') or []
+            with open(output_dir / 'gold_selected_codes.json', 'w', encoding='utf-8') as f:
+                json.dump(selected_codes, f, ensure_ascii=False, indent=2)
         
         # Save summary
         with open(output_dir / 'summary.txt', 'w') as f:
@@ -992,31 +1659,55 @@ class PortfolioEngine:
             f.write(f"Rebalance Days: {results['rebalance_count']}\n")
             f.write(f"Total Trades: {results['trade_count']}\n")
             
-            if xu100_returns is not None:
-                bench_aligned = xu100_returns.dropna()
+            if benchmark_returns is not None:
+                bench_aligned = benchmark_returns.dropna()
                 if len(bench_aligned) > 0:
                     bench_total = (1 + bench_aligned).prod() - 1
-                    f.write(f"\nBenchmark (XU100) Return: {bench_total * 100:.2f}%\n")
-                    f.write(f"Excess vs XU100: {(results['total_return'] - bench_total) * 100:.2f}%\n")
+                    f.write(f"\nBenchmark ({benchmark_name}) Return: {bench_total * 100:.2f}%\n")
+                    f.write(f"Excess vs {benchmark_name}: {(results['total_return'] - bench_total) * 100:.2f}%\n")
+
+            f.write(f"\nCAPM vs {benchmark_name}\n")
+            f.write(f"Observations: {capm_metrics['n_obs']}\n")
+            f.write(f"Beta: {capm_metrics['beta']:.4f}\n" if pd.notna(capm_metrics['beta']) else "Beta: NaN\n")
+            f.write(
+                f"Alpha (annualized): {capm_metrics['alpha_annual'] * 100:.2f}%\n"
+                if pd.notna(capm_metrics['alpha_annual']) else "Alpha (annualized): NaN\n"
+            )
+            f.write(
+                f"R-squared: {capm_metrics['r_squared']:.4f}\n"
+                if pd.notna(capm_metrics['r_squared']) else "R-squared: NaN\n"
+            )
+            if benchmark_returns is not None:
+                rb = compute_rolling_beta_series(returns, benchmark_returns, window=252, min_periods=126, risk_free_daily=0.0)
+                rb_valid = rb.dropna()
+                if not rb_valid.empty:
+                    f.write(f"Latest Rolling Beta (252d): {rb_valid.iloc[-1]:.4f}\n")
             
-            xautry_aligned = xautry_returns.dropna()
-            if len(xautry_aligned) > 0:
-                xautry_total = (1 + xautry_aligned).prod() - 1
-                f.write(f"\nBenchmark (XAU/TRY) Return: {xautry_total * 100:.2f}%\n")
-                f.write(f"Excess vs XAU/TRY: {(results['total_return'] - xautry_total) * 100:.2f}%\n")
+            if benchmark_name != "XAU/TRY":
+                xautry_aligned = xautry_returns.dropna()
+                if len(xautry_aligned) > 0:
+                    xautry_total = (1 + xautry_aligned).prod() - 1
+                    f.write(f"\nBenchmark (XAU/TRY) Return: {xautry_total * 100:.2f}%\n")
+                    f.write(f"Excess vs XAU/TRY: {(results['total_return'] - xautry_total) * 100:.2f}%\n")
         
         print(f"\n💾 Results saved to: {output_dir}")
+        if pd.notna(capm_metrics.get("beta", np.nan)):
+            print(
+                f"   CAPM (vs {benchmark_name}) -> Beta: {capm_metrics['beta']:.3f}, "
+                f"Alpha: {capm_metrics['alpha_annual']*100:.2f}%, "
+                f"R²: {capm_metrics['r_squared']:.3f}"
+            )
         
         # Print yearly summary
         print("\n" + "="*70)
         print("YEARLY RESULTS")
         print("="*70)
-        print(f"{'Year':<6} {'Model':>10} {'XU100':>10} {'Excess':>10}")
+        print(f"{'Year':<6} {'Model':>10} {yearly_table_label:>10} {'Excess':>10}")
         print("-"*40)
         for _, row in yearly_metrics.iterrows():
-            xu_ret = row['XU100_Return'] if pd.notna(row['XU100_Return']) else 0
-            excess = row['Excess_vs_XU100'] if pd.notna(row['Excess_vs_XU100']) else row['Return']
-            print(f"{int(row['Year']):<6} {row['Return']*100:>9.1f}% {xu_ret*100:>9.1f}% {excess*100:>9.1f}%")
+            bench_ret = row[yearly_bench_col] if pd.notna(row[yearly_bench_col]) else 0
+            excess = row[yearly_excess_col] if pd.notna(row[yearly_excess_col]) else row['Return']
+            print(f"{int(row['Year']):<6} {row['Return']*100:>9.1f}% {bench_ret*100:>9.1f}% {excess*100:>9.1f}%")
     
     def save_correlation_matrix(self, output_dir=None):
         """Calculate and save full return correlation matrix across all strategies and benchmarks"""
@@ -1102,8 +1793,98 @@ class PortfolioEngine:
         # Save correlation matrix after all factors complete
         if self.factor_returns:
             self.save_correlation_matrix()
+        if self.factor_capm:
+            self.save_capm_summary()
+        if self.factor_yearly_rolling_beta:
+            self.save_yearly_rolling_beta_summary()
         
         return results
+
+    def save_capm_summary(self, output_dir=None):
+        """Save CAPM summary across all factors."""
+        if not self.factor_capm:
+            print("⚠️  No CAPM results available")
+            return
+
+        if output_dir is None:
+            output_dir = Path(__file__).parent / "results"
+        else:
+            output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        rows = []
+        for factor_name, m in self.factor_capm.items():
+            rows.append({
+                "Factor": factor_name,
+                "Benchmark": m.get("benchmark", "XU100"),
+                "Observations": m.get("n_obs"),
+                "Beta": m.get("beta"),
+                "Alpha_Annual": m.get("alpha_annual"),
+                "R_squared": m.get("r_squared"),
+                "Correlation": m.get("correlation"),
+                "ResidualVol_Annual": m.get("residual_vol_annual"),
+            })
+
+        df = pd.DataFrame(rows).sort_values("Factor")
+        out_file = output_dir / "capm_summary.csv"
+        df.to_csv(out_file, index=False)
+
+        print("\n" + "=" * 70)
+        print("CAPM SUMMARY (factor-specific benchmark)")
+        print("=" * 70)
+        for _, row in df.iterrows():
+            beta = row["Beta"]
+            alpha = row["Alpha_Annual"]
+            r2 = row["R_squared"]
+            bench = row["Benchmark"]
+            print(
+                f"{row['Factor']:<24} vs {bench:<7} beta={beta:>6.3f}  alpha={alpha*100:>7.2f}%  R²={r2:>6.3f}"
+                if pd.notna(beta) and pd.notna(alpha) and pd.notna(r2)
+                else f"{row['Factor']:<24} vs {bench:<7} beta=  NaN  alpha=   NaN  R²=  NaN"
+            )
+        print(f"\n💾 CAPM summary saved to: {out_file}")
+
+    def save_yearly_rolling_beta_summary(self, output_dir=None):
+        """Save consolidated yearly rolling-beta metrics across factors."""
+        if not self.factor_yearly_rolling_beta:
+            print("⚠️  No yearly rolling-beta results available")
+            return
+
+        if output_dir is None:
+            output_dir = Path(__file__).parent / "results"
+        else:
+            output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        rows = []
+        for factor_name, yearly_df in self.factor_yearly_rolling_beta.items():
+            if yearly_df is None or yearly_df.empty:
+                continue
+            df = yearly_df.copy()
+            df.insert(0, "Factor", factor_name)
+            rows.append(df)
+
+        if rows:
+            summary_df = pd.concat(rows, ignore_index=True)
+            summary_df = summary_df.sort_values(["Factor", "Year"]).reset_index(drop=True)
+        else:
+            summary_df = pd.DataFrame(columns=[
+                "Factor",
+                "Year",
+                "Observations",
+                "Beta_Start",
+                "Beta_End",
+                "Beta_Mean",
+                "Beta_Median",
+                "Beta_Min",
+                "Beta_Max",
+                "Beta_Std",
+                "Beta_Change",
+            ])
+
+        out_file = output_dir / "yearly_rolling_beta_summary.csv"
+        summary_df.to_csv(out_file, index=False)
+        print(f"💾 Yearly rolling beta summary saved to: {out_file}")
 
 
 # ============================================================================

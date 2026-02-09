@@ -184,7 +184,7 @@ print(f"Output directory: {config.OUTPUT_DIR}")
 **How to use**:
 ```bash
 # From terminal
-cd "/home/safa/Documents/Models/BIST/Regime Filter"
+cd "/home/safa/Documents/Markets/BIST/Regime Filter"
 python run_full_pipeline.py
 ```
 

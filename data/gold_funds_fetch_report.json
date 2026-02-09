@@ -1,0 +1,13 @@
+{
+  "range": "5Y",
+  "mode": "strict",
+  "universe_count": 819,
+  "selected_count": 34,
+  "downloaded_count": 34,
+  "start_date": "2021-02-11",
+  "end_date": "2026-02-06",
+  "row_count_long": 28629,
+  "row_count_wide": 1253,
+  "failed_count": 0,
+  "failures": []
+}

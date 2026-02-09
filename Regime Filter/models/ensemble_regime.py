@@ -23,18 +23,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from predictive_regime import PredictiveRegimeModel
+    from regime_models import PredictiveRegimeModel
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
-    warnings.warn("predictive_regime module not available")
+    warnings.warn("PredictiveRegimeModel not available")
 
 try:
-    from hmm_regime import HMMRegimeClassifier
+    from regime_models import HMMRegimeClassifier
     HMM_AVAILABLE = True
 except ImportError:
     HMM_AVAILABLE = False
-    warnings.warn("hmm_regime module not available")
+    warnings.warn("HMMRegimeClassifier not available")
 
 try:
     from models.lstm_regime import LSTMRegimeModel
@@ -253,18 +253,42 @@ class EnsembleRegimeModel:
         )
 
         # Prepare sequences
-        X, y = self.lstm_model.prepare_sequences(features, regimes)
+        X, y, seq_dates = self.lstm_model.prepare_sequences(
+            features, regimes, return_dates=True
+        )
 
-        # Split data
-        X_train, X_test, y_train, y_test = self.lstm_model.train_test_split(X, y, train_ratio=0.8)
+        # Split data by date for consistency with other models.
+        X_train, X_test, y_train, y_test = self.lstm_model.train_test_split_by_date(
+            X, y, seq_dates, train_end_date
+        )
+
+        if len(X_train) == 0 or len(X_test) == 0:
+            raise ValueError(
+                f"Insufficient LSTM data after date split (train={len(X_train)}, test={len(X_test)}). "
+                f"Adjust train_end_date or sequence settings."
+            )
+
+        # Validation split inside train set (avoid using test set for early stopping).
+        val_size = max(1, int(len(X_train) * 0.15)) if len(X_train) >= 20 else 0
+        if val_size > 0 and len(X_train) > val_size:
+            X_train_core = X_train[:-val_size]
+            y_train_core = y_train[:-val_size]
+            X_val = X_train[-val_size:]
+            y_val = y_train[-val_size:]
+        else:
+            X_train_core = X_train
+            y_train_core = y_train
+            X_val = None
+            y_val = None
 
         # Scale
-        X_train_scaled, X_test_scaled = self.lstm_model._scale_sequences(X_train, X_test)
+        X_train_scaled, X_test_scaled = self.lstm_model._scale_sequences(X_train_core, X_test)
+        X_val_scaled = self.lstm_model._transform_sequences(X_val) if X_val is not None else None
 
         # Train
         self.lstm_model.train(
-            X_train_scaled, y_train,
-            X_test_scaled, y_test,
+            X_train_scaled, y_train_core,
+            X_val_scaled, y_val,
             epochs=epochs,
             batch_size=batch_size
         )
@@ -334,7 +358,8 @@ class EnsembleRegimeModel:
                 X = X[trained_features]
 
                 # Handle NaN
-                X = X.ffill().bfill().fillna(0)
+                # Causal fill only: do not backfill with future values.
+                X = X.ffill().fillna(0)
 
                 # Predict
                 X_scaled = self.xgboost_model.scaler.transform(X)
@@ -622,10 +647,12 @@ class EnsembleRegimeModel:
         # Compare individual models
         print("\nIndividual Model Accuracies:")
         for model_name, preds in details['model_predictions'].items():
-            valid_preds = preds[valid_mask.values]
-            valid_preds = valid_preds[~np.isnan(valid_preds)]
-            if len(valid_preds) > 0:
-                model_acc = accuracy_score(y_true[:len(valid_preds)], valid_preds.astype(int))
+            preds_arr = np.asarray(preds)[valid_mask.values]
+            model_mask = ~np.isnan(preds_arr)
+            if model_mask.any():
+                model_y_true = y_true[model_mask]
+                model_y_pred = preds_arr[model_mask].astype(int)
+                model_acc = accuracy_score(model_y_true, model_y_pred)
                 print(f"  {model_name}: {model_acc:.2%}")
 
         return {

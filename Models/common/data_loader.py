@@ -153,23 +153,56 @@ class DataLoader:
                 print("  📦 Loading consolidated fundamentals (Parquet)...")
                 self._fundamentals_parquet = pd.read_parquet(parquet_file)
         return self._fundamentals_parquet
-    
-    def load_shares_outstanding(self, ticker: str) -> pd.Series:
-        """Load shares outstanding from consolidated file (fast!)"""
-        # Load consolidated file on first call
+
+    def load_shares_outstanding_panel(self) -> pd.DataFrame:
+        """Load Date x Ticker shares outstanding panel."""
         if self._shares_consolidated is None:
             shares_file = self.data_dir / "shares_outstanding_consolidated.csv"
             if shares_file.exists():
                 print("  📊 Loading consolidated shares file...")
-                self._shares_consolidated = pd.read_csv(shares_file, index_col=0, parse_dates=True)
-                print(f"  ✅ Loaded shares for {self._shares_consolidated.shape[1]} tickers")
+                panel = pd.read_csv(shares_file, index_col=0, parse_dates=True)
+                panel.index = pd.to_datetime(panel.index, errors="coerce")
+                panel = panel.sort_index()
+                panel.columns = [str(c).upper() for c in panel.columns]
+                self._shares_consolidated = panel
+                print(f"  ✅ Loaded shares for {panel.shape[1]} tickers")
             else:
-                print("  ⚠️  Consolidated shares file not found")
-                self._shares_consolidated = None
-        
-        # Return from consolidated file if available
-        if self._shares_consolidated is not None and ticker in self._shares_consolidated.columns:
-            return self._shares_consolidated[ticker].dropna()
+                # Fallback: build panel from consolidated isyatirim parquet
+                isy = self._load_isyatirim_parquet()
+                if isy is not None and not isy.empty:
+                    try:
+                        daily = isy[isy["sheet_type"] == "daily"]
+                        required_cols = {"ticker", "HGDG_TARIH", "SERMAYE"}
+                        if not daily.empty and required_cols.issubset(daily.columns):
+                            panel = daily.pivot_table(
+                                index="HGDG_TARIH",
+                                columns="ticker",
+                                values="SERMAYE",
+                                aggfunc="last",
+                            )
+                            panel.index = pd.to_datetime(panel.index, errors="coerce")
+                            panel = panel.sort_index()
+                            panel.columns = [str(c).upper() for c in panel.columns]
+                            self._shares_consolidated = panel
+                            print(f"  ✅ Built shares panel from isyatirim parquet for {panel.shape[1]} tickers")
+                        else:
+                            self._shares_consolidated = None
+                    except Exception as exc:
+                        print(f"  ⚠️  Failed to build shares panel from isyatirim parquet: {exc}")
+                        self._shares_consolidated = None
+                else:
+                    print("  ⚠️  Consolidated shares file not found")
+                    self._shares_consolidated = None
+
+        if self._shares_consolidated is None:
+            return pd.DataFrame()
+        return self._shares_consolidated
+    
+    def load_shares_outstanding(self, ticker: str) -> pd.Series:
+        """Load shares outstanding from consolidated file (fast!)"""
+        shares_panel = self.load_shares_outstanding_panel()
+        if not shares_panel.empty and ticker in shares_panel.columns:
+            return shares_panel[ticker].dropna()
 
         # Fallback: consolidated isyatirim parquet (if available)
         isy = self._load_isyatirim_parquet()

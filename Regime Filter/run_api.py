@@ -20,6 +20,7 @@ Environment Variables:
 
 import sys
 import os
+import argparse
 from pathlib import Path
 
 # Add current directory to path
@@ -36,9 +37,47 @@ except ImportError:
     pass
 
 
+def check_dependencies():
+    """Check runtime dependencies and return missing package groups."""
+    dependencies = [
+        ('pandas', 'pandas', True),
+        ('numpy', 'numpy', True),
+        ('xgboost', 'xgboost', False),
+        ('hmmlearn', 'hmmlearn', False),
+        ('fastapi', 'fastapi', True),
+        ('uvicorn', 'uvicorn', True),
+        ('torch', 'PyTorch', False),
+        ('apscheduler', 'APScheduler', True),
+    ]
+
+    missing_required = []
+    missing_optional = []
+
+    print("\nDependency Check:")
+    for module, name, required in dependencies:
+        try:
+            __import__(module)
+            print(f"  ✓ {name}")
+        except ImportError:
+            print(f"  ✗ {name} (not installed)")
+            if required:
+                missing_required.append(name)
+            else:
+                missing_optional.append(name)
+
+    return missing_required, missing_optional
+
+
 def main():
     """Run the API server"""
-    import uvicorn
+    parser = argparse.ArgumentParser(description="Run BIST Regime Filter API server")
+    parser.add_argument(
+        "--check-deps",
+        action="store_true",
+        help="Check dependencies and exit",
+    )
+    args = parser.parse_args()
+
     from config import API_CONFIG
 
     print("="*70)
@@ -47,25 +86,19 @@ def main():
     print(f"\nVersion: 2.0.0")
     print(f"Python: {sys.version}")
 
-    # Check key dependencies
-    print("\nDependency Check:")
-    dependencies = [
-        ('pandas', 'pandas'),
-        ('numpy', 'numpy'),
-        ('xgboost', 'xgboost'),
-        ('hmmlearn', 'hmmlearn'),
-        ('fastapi', 'fastapi'),
-        ('uvicorn', 'uvicorn'),
-        ('torch', 'PyTorch'),
-        ('apscheduler', 'APScheduler'),
-    ]
+    missing_required, missing_optional = check_dependencies()
+    if missing_optional:
+        print(f"\n  Optional packages missing: {', '.join(missing_optional)}")
 
-    for module, name in dependencies:
-        try:
-            __import__(module)
-            print(f"  ✓ {name}")
-        except ImportError:
-            print(f"  ✗ {name} (not installed)")
+    if missing_required:
+        print("\nERROR: Required dependencies are missing. API startup aborted.")
+        print(f"Missing: {', '.join(missing_required)}")
+        print('Install with: pip install -r "Regime Filter/requirements.txt"')
+        return 1
+
+    if args.check_deps:
+        print("\nDependency check passed.")
+        return 0
 
     # Check TCMB API key
     tcmb_key = os.environ.get('TCMB_EVDS_API_KEY')
@@ -107,6 +140,8 @@ def main():
     print(f"Starting server on http://{API_CONFIG['host']}:{API_CONFIG['port']}")
     print("="*70 + "\n")
 
+    import uvicorn
+
     # Run server
     uvicorn.run(
         "api.main:app",
@@ -115,7 +150,8 @@ def main():
         reload=API_CONFIG.get('reload', False),
         log_level="info"
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

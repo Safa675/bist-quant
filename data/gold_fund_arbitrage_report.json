@@ -1,0 +1,15 @@
+{
+  "params": {
+    "lookback": 126,
+    "min_periods": 63,
+    "entry_z": 2.0,
+    "exit_z": 0.5,
+    "min_obs_metrics": 60,
+    "gold_lag_days": 1
+  },
+  "fund_count": 34,
+  "spread_rows": 28627,
+  "spread_start": "2021-02-11",
+  "spread_end": "2026-02-06",
+  "latest_signal_date": "2026-02-06"
+}

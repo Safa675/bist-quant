@@ -49,6 +49,7 @@ SIGNAL_CONFIG = {
         # Transaction costs
         'use_slippage': True,
         'slippage_bps': 5.0,
+        'small_cap_slippage_bps': 20.0,
 
         # Portfolio size
         'top_n': 20,

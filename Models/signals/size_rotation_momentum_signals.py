@@ -23,9 +23,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import size rotation helpers
 from signals.size_rotation_signals import (
     calculate_size_regime,
-    XU100_TICKERS,
+    build_market_cap_panel,
+    build_liquidity_panel,
+    get_size_buckets_for_date,
     RELATIVE_PERF_LOOKBACK,
     SWITCH_THRESHOLD,
+    SIZE_LIQUIDITY_QUANTILE,
 )
 
 
@@ -93,9 +96,20 @@ def build_size_rotation_momentum_signals(
     print(f"  Momentum lookback: {MOMENTUM_LOOKBACK} days (skip {MOMENTUM_SKIP})")
     print(f"  Switch threshold: ±{SWITCH_THRESHOLD}")
 
+    # Build dynamic size inputs
+    print("  Building market-cap panel (SERMAYE × price)...")
+    market_cap_df = build_market_cap_panel(close_df, close_df.index, data_loader)
+    print("  Loading liquidity panel...")
+    liquidity_df = build_liquidity_panel(close_df, close_df.index, data_loader)
+
     # Calculate size regime
     print("  Calculating size regime...")
-    size_regime = calculate_size_regime(close_df)
+    size_regime = calculate_size_regime(
+        close_df,
+        market_cap_df=market_cap_df,
+        liquidity_df=liquidity_df,
+        liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+    )
 
     # Show current regime
     latest_regime = size_regime['regime'].iloc[-1] if not size_regime.empty else 'unknown'
@@ -106,11 +120,17 @@ def build_size_rotation_momentum_signals(
     print("  Calculating momentum...")
     momentum = calculate_momentum(close_df)
 
-    # Classify tickers
-    large_cap_tickers = set(t for t in XU100_TICKERS if t in close_df.columns)
-    small_cap_tickers = set(t for t in close_df.columns if t not in large_cap_tickers)
-
-    print(f"  Large caps: {len(large_cap_tickers)}, Small caps: {len(small_cap_tickers)}")
+    # Show latest bucket counts
+    latest_date = close_df.index[-1]
+    latest_mcap = market_cap_df.loc[latest_date] if latest_date in market_cap_df.index else pd.Series(dtype=float)
+    latest_liq = liquidity_df.loc[latest_date] if latest_date in liquidity_df.index else pd.Series(dtype=float)
+    liquid_latest, small_latest, large_latest = get_size_buckets_for_date(
+        latest_mcap,
+        latest_liq,
+        liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+    )
+    print(f"  Latest liquid universe: {len(liquid_latest)}")
+    print(f"  Latest large caps (top 10%): {len(large_latest)}, small caps (bottom 10%): {len(small_latest)}")
 
     # Build rotation-aware momentum scores
     print("  Building rotation-aware scores...")
@@ -126,32 +146,36 @@ def build_size_rotation_momentum_signals(
         if pd.isna(regime):
             regime = 'neutral'
 
+        mcaps = market_cap_df.loc[date] if date in market_cap_df.index else pd.Series(dtype=float)
+        liq = liquidity_df.loc[date] if date in liquidity_df.index else pd.Series(dtype=float)
+        liquid_universe, small_caps, large_caps = get_size_buckets_for_date(
+            mcaps,
+            liq,
+            liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+        )
+        if not liquid_universe:
+            continue
+
         if regime == 'small_cap':
-            # Only score small caps, zero out large caps
-            small_mom = mom_today[mom_today.index.isin(small_cap_tickers)].dropna()
+            # Only score liquid small caps, zero out everything else
+            small_mom = mom_today.reindex(list(small_caps)).dropna()
             if len(small_mom) > 0:
                 # Rank small caps by momentum (0-100)
                 ranks = small_mom.rank(pct=True) * 100
                 for ticker, rank in ranks.items():
                     scores.loc[date, ticker] = rank
-            # Large caps get 0
-            for ticker in large_cap_tickers:
-                scores.loc[date, ticker] = 0
 
         elif regime == 'large_cap':
-            # Only score large caps, zero out small caps
-            large_mom = mom_today[mom_today.index.isin(large_cap_tickers)].dropna()
+            # Only score liquid large caps, zero out everything else
+            large_mom = mom_today.reindex(list(large_caps)).dropna()
             if len(large_mom) > 0:
                 ranks = large_mom.rank(pct=True) * 100
                 for ticker, rank in ranks.items():
                     scores.loc[date, ticker] = rank
-            # Small caps get 0
-            for ticker in small_cap_tickers:
-                scores.loc[date, ticker] = 0
 
         else:  # neutral
-            # Score all stocks by momentum
-            all_mom = mom_today.dropna()
+            # Score all liquid names by momentum
+            all_mom = mom_today.reindex(list(liquid_universe)).dropna()
             if len(all_mom) > 0:
                 ranks = all_mom.rank(pct=True) * 100
                 for ticker, rank in ranks.items():

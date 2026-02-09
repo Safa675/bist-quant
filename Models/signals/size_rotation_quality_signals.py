@@ -26,9 +26,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import helpers
 from signals.size_rotation_signals import (
     calculate_size_regime,
-    XU100_TICKERS,
+    build_market_cap_panel,
+    build_liquidity_panel,
+    get_size_buckets_for_date,
     RELATIVE_PERF_LOOKBACK,
     SWITCH_THRESHOLD,
+    SIZE_LIQUIDITY_QUANTILE,
 )
 from signals.quality_momentum_signals import calculate_profitability_for_ticker
 from common.utils import apply_lag
@@ -79,20 +82,31 @@ def build_size_rotation_quality_signals(
     print(f"  Weights: Momentum {MOMENTUM_WEIGHT*100:.0f}%, Profitability {PROFITABILITY_WEIGHT*100:.0f}%")
     print(f"  Min percentile filter: {MIN_PERCENTILE}")
 
-    # 1. Calculate size regime
+    # 1. Build dynamic size inputs and calculate regime
+    print("  Building market-cap panel (SERMAYE × price)...")
+    market_cap_df = build_market_cap_panel(close_df, close_df.index, data_loader)
+    print("  Loading liquidity panel...")
+    liquidity_df = build_liquidity_panel(close_df, close_df.index, data_loader)
+
+    # 2. Calculate size regime
     print("  Calculating size regime...")
-    size_regime = calculate_size_regime(close_df)
+    size_regime = calculate_size_regime(
+        close_df,
+        market_cap_df=market_cap_df,
+        liquidity_df=liquidity_df,
+        liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+    )
 
     latest_regime = size_regime['regime'].iloc[-1] if not size_regime.empty else 'unknown'
     latest_z = size_regime['z_score'].iloc[-1] if not size_regime.empty else 0
     print(f"  Current regime: {latest_regime.upper()} (z-score: {latest_z:.2f})")
 
-    # 2. Calculate momentum
+    # 3. Calculate momentum
     print("  Calculating momentum...")
     momentum = close_df.pct_change(MOMENTUM_LOOKBACK)
     momentum_rank = momentum.rank(axis=1, pct=True) * 100
 
-    # 3. Calculate profitability
+    # 4. Calculate profitability
     print("  Calculating profitability...")
     fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader else None
 
@@ -121,11 +135,17 @@ def build_size_rotation_quality_signals(
     # Rank profitability
     profitability_rank = profitability_df.rank(axis=1, pct=True) * 100
 
-    # 4. Classify tickers by size
-    large_cap_tickers = set(t for t in XU100_TICKERS if t in close_df.columns)
-    small_cap_tickers = set(t for t in close_df.columns if t not in large_cap_tickers)
-
-    print(f"  Large caps: {len(large_cap_tickers)}, Small caps: {len(small_cap_tickers)}")
+    # Show latest bucket counts
+    latest_date = close_df.index[-1]
+    latest_mcap = market_cap_df.loc[latest_date] if latest_date in market_cap_df.index else pd.Series(dtype=float)
+    latest_liq = liquidity_df.loc[latest_date] if latest_date in liquidity_df.index else pd.Series(dtype=float)
+    liquid_latest, small_latest, large_latest = get_size_buckets_for_date(
+        latest_mcap,
+        latest_liq,
+        liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+    )
+    print(f"  Latest liquid universe: {len(liquid_latest)}")
+    print(f"  Latest large caps (top 10%): {len(large_latest)}, small caps (bottom 10%): {len(small_latest)}")
 
     # 5. Build rotation-aware quality scores
     print("  Building rotation-aware quality scores...")
@@ -143,13 +163,23 @@ def build_size_rotation_quality_signals(
         mom_ranks = momentum_rank.loc[date] if date in momentum_rank.index else pd.Series()
         prof_ranks = profitability_rank.loc[date] if date in profitability_rank.index else pd.Series()
 
+        mcaps = market_cap_df.loc[date] if date in market_cap_df.index else pd.Series(dtype=float)
+        liq = liquidity_df.loc[date] if date in liquidity_df.index else pd.Series(dtype=float)
+        liquid_universe, small_caps, large_caps = get_size_buckets_for_date(
+            mcaps,
+            liq,
+            liquidity_quantile=SIZE_LIQUIDITY_QUANTILE,
+        )
+        if not liquid_universe:
+            continue
+
         # Determine which tickers to consider based on regime
         if regime == 'small_cap':
-            eligible_tickers = small_cap_tickers
+            eligible_tickers = small_caps
         elif regime == 'large_cap':
-            eligible_tickers = large_cap_tickers
+            eligible_tickers = large_caps
         else:  # neutral
-            eligible_tickers = set(close_df.columns)
+            eligible_tickers = liquid_universe
 
         for ticker in eligible_tickers:
             mom_r = mom_ranks.get(ticker, np.nan)
@@ -178,7 +208,7 @@ def build_size_rotation_quality_signals(
         print(f"  Top 5: {', '.join(top_5.index.tolist())}")
 
         # Show regime composition
-        large_in_top = sum(1 for t in top_5.index if t in large_cap_tickers)
+        large_in_top = sum(1 for t in top_5.index if t in large_latest)
         print(f"  Top 5 composition: {large_in_top} large caps, {5-large_in_top} small caps")
 
     print(f"  ✅ Size rotation quality signals: {scores.shape[0]} days × {scores.shape[1]} tickers")

@@ -4,6 +4,76 @@ import pandas as pd
 import numpy as np
 
 
+class SignalDataError(RuntimeError):
+    """Raised when a signal cannot be built due to missing/invalid critical data."""
+
+
+def raise_signal_data_error(signal_name: str, reason: str) -> None:
+    """Raise a standardized signal data error."""
+    raise SignalDataError(f"[{signal_name}] {reason}")
+
+
+def assert_has_non_na_values(
+    panel: pd.DataFrame,
+    signal_name: str,
+    context: str,
+) -> None:
+    """Ensure panel contains at least one non-NaN value."""
+    if panel is None or panel.empty:
+        raise_signal_data_error(signal_name, f"{context}: panel is empty")
+    if int(panel.notna().sum().sum()) == 0:
+        raise_signal_data_error(signal_name, f"{context}: panel has no non-NaN values")
+
+
+def assert_has_cross_section(
+    panel: pd.DataFrame,
+    signal_name: str,
+    context: str,
+    min_valid_tickers: int = 5,
+) -> None:
+    """Ensure at least one date has enough non-NaN names for cross-sectional ranking."""
+    assert_has_non_na_values(panel, signal_name, context)
+    max_valid = int(panel.notna().sum(axis=1).max())
+    if max_valid < min_valid_tickers:
+        raise_signal_data_error(
+            signal_name,
+            f"{context}: max valid names per date is {max_valid} (< {min_valid_tickers})",
+        )
+
+
+def assert_panel_not_constant(
+    panel: pd.DataFrame,
+    signal_name: str,
+    context: str,
+    eps: float = 1e-9,
+) -> None:
+    """Ensure panel is not constant across tickers for all dates."""
+    assert_has_non_na_values(panel, signal_name, context)
+    # If every row has near-zero cross-sectional std, the signal is degenerate.
+    row_std = panel.std(axis=1, skipna=True).fillna(0.0)
+    if float(row_std.max()) <= eps:
+        raise_signal_data_error(signal_name, f"{context}: cross-section is constant for all dates")
+
+
+def assert_recent_enough(
+    series_dates: pd.DatetimeIndex,
+    required_date: pd.Timestamp,
+    signal_name: str,
+    context: str,
+    max_staleness_days: int = 400,
+) -> None:
+    """Ensure source dates are not excessively stale vs required date."""
+    if len(series_dates) == 0:
+        raise_signal_data_error(signal_name, f"{context}: no dates available")
+    latest = pd.Timestamp(series_dates.max())
+    staleness = (pd.Timestamp(required_date) - latest).days
+    if staleness > max_staleness_days:
+        raise_signal_data_error(
+            signal_name,
+            f"{context}: latest date {latest.date()} is stale by {staleness} days",
+        )
+
+
 def normalize_ticker(ticker: str) -> str:
     """Normalize ticker symbol"""
     return ticker.split('.')[0].upper()
@@ -39,13 +109,22 @@ def pick_row_from_sheet(sheet: pd.DataFrame, keys: tuple) -> pd.Series | None:
     """Pick first matching row from a consolidated sheet dataframe."""
     if sheet is None or sheet.empty:
         return None
+    fallback = None
     for key in keys:
         if key in sheet.index:
             row = sheet.loc[key]
             if isinstance(row, pd.DataFrame):
-                row = row.iloc[0]
-            return row
-    return None
+                candidates = [row.iloc[i] for i in range(len(row))]
+            else:
+                candidates = [row]
+
+            for candidate in candidates:
+                if fallback is None:
+                    fallback = candidate
+                parsed = coerce_quarter_cols(candidate)
+                if not parsed.empty:
+                    return candidate
+    return fallback
 
 
 def coerce_quarter_cols(row: pd.Series) -> pd.Series:
@@ -114,14 +193,34 @@ def sum_ttm(series: pd.Series) -> pd.Series:
     return ttm.dropna()
 
 
-def apply_lag(series: pd.Series, dates: pd.DatetimeIndex) -> pd.Series:
-    """Apply reporting lag to fundamental data"""
+def apply_lag(
+    series: pd.Series,
+    dates: pd.DatetimeIndex,
+    q4_lag_days: int = 70,
+    other_lag_days: int = 40,
+) -> pd.Series:
+    """
+    Apply reporting lag to fundamental data.
+
+    In Turkey, financial statements are announced with a delay:
+    - Q1, Q2, Q3 periods: ~40 days after quarter end
+    - Q4 (annual): ~70 days after year end (more complex auditing)
+
+    Args:
+        series: Fundamental data indexed by calendar quarter end date
+        dates: Target daily DatetimeIndex to align to
+        q4_lag_days: Lag for Q4/December data (default 70)
+        other_lag_days: Lag for Q1-Q3 data (default 40)
+
+    Returns:
+        Series aligned to dates with proper lag applied
+    """
     min_valid_date = pd.Timestamp('2000-01-01')
     max_valid_date = pd.Timestamp('2030-12-31')
-    
+
     effective_index = []
     effective_values = []
-    
+
     for ts in series.index:
         try:
             ts_stamp = pd.Timestamp(ts)
@@ -129,23 +228,24 @@ def apply_lag(series: pd.Series, dates: pd.DatetimeIndex) -> pd.Series:
                 continue
         except:
             continue
-        
-        # Q4 (December) has 75-day lag, others have 45-day lag
+
+        # Q4 (December) has longer lag due to annual audit requirements
+        # Q1 (March), Q2 (June), Q3 (September) have shorter lag
         if ts.month == 12:
-            lag_days = 75
+            lag_days = q4_lag_days
         else:
-            lag_days = 45
-        
+            lag_days = other_lag_days
+
         try:
             effective_date = (ts_stamp + pd.Timedelta(days=lag_days)).normalize()
             effective_index.append(effective_date)
             effective_values.append(series[ts])
         except:
             continue
-    
+
     if effective_index:
         effective = pd.Series(effective_values, index=pd.DatetimeIndex(effective_index)).sort_index()
         effective = effective[~effective.index.duplicated(keep="last")]
         return effective.reindex(dates, method="ffill")
-    
+
     return pd.Series(dtype=float, index=dates)

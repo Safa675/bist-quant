@@ -68,27 +68,22 @@ Regime Filter/
 ├── 📁 models/                     # ML models (LSTM, Ensemble)
 ├── 📁 docs/                       # 📚 Documentation
 │   └── README.md                  # Unified documentation
+├── 📁 data/                       # Local links/cache (shared data is ../data)
 ├── 📁 outputs/                    # Generated outputs
-├── range_filter/                  # (If applicable)
 ├── config.py                      # Configuration
-├── data_loader.py                 # Data loading
-├── features.py                    # Feature engineering (50+ features)
-├── regime_classifier.py           # Rule-based classifier
-├── simplified_regime.py           # 5-state classification
-├── hmm_regime.py                  # HMM regime discovery
-├── predictive_regime.py           # XGBoost predictor
-├── leading_indicators.py          # Global indicators
-├── dynamic_allocation.py          # Adaptive position sizing
-├── backtest.py                    # Strategy backtesting
+├── market_data.py                 # Data loading + feature engineering
+├── regime_models.py               # Rule-based + ML regime models
 ├── regime_filter.py               # Main orchestration
+├── strategies.py                  # Regime-aware strategy rules
+├── evaluation.py                  # Backtesting/evaluation
+├── evaluate_ensemble.py           # Ensemble validation script
+├── examples.py                    # Simple/enhanced/predictive demos
 ├── dashboard.py                   # Visualization
 ├── run_full_pipeline.py           # Complete pipeline
 ├── run_api.py                     # API server
-├── enhanced_example.py            # Full example
-├── predictive_example.py          # ML prediction demo
 └── requirements.txt               # Dependencies
 
-# Note: Data fetchers (tcmb_data_fetcher.py etc.) are now in ../data/Fetcher-Scrapper/
+# Note: Data fetchers (tcmb_data_fetcher.py, tcmb_rates.py, etc.) are in ../data/Fetcher-Scrapper/
 ```
 
 ## Usage
@@ -113,7 +108,7 @@ rf.export_regimes()
 ### Complete Example
 
 ```bash
-python example_usage.py
+python examples.py simple
 ```
 
 This will:
@@ -127,7 +122,7 @@ This will:
 ### Enhanced Example (Recommended)
 
 ```bash
-python enhanced_example.py
+python examples.py enhanced
 ```
 
 This runs the full pipeline with:
@@ -325,7 +320,7 @@ if current['liquidity'] == 'Very Low':
 
 ### 1. HMM-Based Regime Discovery
 
-**File:** `hmm_regime.py`
+**File:** `regime_models.py` (`HMMRegimeClassifier`)
 
 Uses Hidden Markov Models to learn regime structure from data:
 - Discovers regimes without arbitrary thresholds
@@ -335,7 +330,7 @@ Uses Hidden Markov Models to learn regime structure from data:
 
 **Example:**
 ```python
-from hmm_regime import HMMRegimeClassifier
+from regime_models import HMMRegimeClassifier
 
 hmm = HMMRegimeClassifier(n_regimes=4)
 hmm.fit(features)
@@ -353,7 +348,7 @@ durations = hmm.get_expected_duration()
 
 ### 2. Simplified 5-State Classification
 
-**File:** `simplified_regime.py`
+**File:** `regime_models.py` (`SimplifiedRegimeClassifier`)
 
 Reduces 144 possible states to 5 actionable regimes:
 - **Bull**: Uptrend + Low/Mid vol + Risk-on
@@ -375,7 +370,7 @@ Reduces 144 possible states to 5 actionable regimes:
 Fetches actual Turkish deposit rates for realistic Sharpe calculations:
 - Connects to TCMB EVDS API (optional)
 - Falls back to USD/TRY-based approximation
-- Caches rates to `/home/safa/Documents/Models/BIST/data/tcmb_deposit_rates.csv`
+- Caches rates to `/home/safa/Documents/Markets/BIST/data/tcmb_deposit_rates.csv`
 
 **Impact:**
 - Old Sharpe (RF=0%): Buy&Hold 0.95, Regime Rotation 2.01
@@ -397,7 +392,7 @@ rates = fetcher.fetch_rates()
 
 ### 4. Backtesting Module
 
-**File:** `backtest.py`
+**File:** `evaluation.py` (`RegimeBacktester`)
 
 Validates regime effectiveness through backtesting:
 - Tests regime-based strategies vs buy-and-hold
@@ -445,7 +440,7 @@ regime_probs = result.smoothed_marginal_probabilities
 If you have individual stock data:
 
 ```python
-# In features.py
+# In market_data.py (FeatureEngine)
 def calculate_breadth_features(self):
     # % stocks above 50d MA
     # Advance/decline line

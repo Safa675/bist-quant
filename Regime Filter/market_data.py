@@ -8,25 +8,55 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 from pathlib import Path
+import sys
 import warnings
 import config
 
+def _fetcher_search_paths() -> list[Path]:
+    """Possible locations for Fetcher-Scrapper across layouts."""
+    current_dir = Path(__file__).resolve().parent
+    project_root = current_dir.parent
+    return [
+        current_dir / "data" / "Fetcher-Scrapper",
+        project_root / "data" / "Fetcher-Scrapper",
+    ]
+
+
+for _fetcher_dir in _fetcher_search_paths():
+    if _fetcher_dir.exists() and str(_fetcher_dir) not in sys.path:
+        sys.path.append(str(_fetcher_dir))
+
 # Import TCMB data fetcher if available
 try:
-    import sys
-    # Adjust path to find the centralized fetcher
-    # Assumes this file is in Regime Filter/ folder
-    sys.path.append(str(Path(__file__).parent / "data" / "Fetcher-Scrapper"))
     from tcmb_data_fetcher import TCMBDataFetcher
     TCMB_AVAILABLE = True
 except ImportError:
     TCMB_AVAILABLE = False
-    # Only warn if we are not in a CI/CD environment or similar, to avoid log spam
-    # warnings.warn("tcmb_data_fetcher not available. Turkey-specific indicators will use proxies.")
+    # tcmb_data_fetcher is optional; pipeline will continue with proxies.
 
 
 class DataLoader:
     """Load and preprocess market data"""
+
+    @staticmethod
+    def _resolve_default_data_dir() -> Path:
+        """Resolve default data directory, preferring project-level shared data."""
+        current_file = Path(__file__).resolve()
+        regime_filter_dir = current_file.parent
+        candidates = [
+            regime_filter_dir.parent / "data",  # BIST/data
+            regime_filter_dir / "data",         # Regime Filter/data
+        ]
+
+        for candidate in candidates:
+            if (candidate / config.XU100_FILE).exists():
+                return candidate
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        return candidates[0]
     
     def __init__(self, data_dir=None):
         """
@@ -34,24 +64,12 @@ class DataLoader:
             data_dir: Path to data directory (absolute or relative to this file)
         """
         if data_dir is None:
-            # Get absolute path to data directory relative to this file
-            current_file = Path(__file__).resolve()
-            # If in Regime Filter/market_data.py, parent is Regime Filter/
-            # Data is usually in Regime Filter/data/
-            self.data_dir = current_file.parent / "data"
+            self.data_dir = self._resolve_default_data_dir()
         else:
             self.data_dir = Path(data_dir)
-        
-        # Ensure data directory exists
-        if not self.data_dir.exists():
-            # Try project root fallback if local data dir doesn't exist
-            # This is for backward compatibility or different project structures
-            project_root = Path(__file__).resolve().parent.parent
-            fallback_dir = project_root / "data"
-            if fallback_dir.exists():
-                self.data_dir = fallback_dir
-            # validation is deferred to specific load methods or let error raise there
-        
+            if not self.data_dir.exists():
+                self.data_dir = self._resolve_default_data_dir()
+
         self.xu100_data = None
         self.usdtry_data = None
         self.bist_prices = None
@@ -66,10 +84,15 @@ class DataLoader:
 
         # Read CSV
         df = pd.read_csv(filepath)
-        
-        # Skip the header row with ticker info if present
-        if len(df) > 0 and (df.iloc[0]['Date'] == 'XU100.IS' or 'Date' not in str(df.iloc[0]['Date'])):
-            df = df.iloc[1:].copy()
+
+        if 'Date' not in df.columns:
+            raise ValueError(f"XU100 file is missing required 'Date' column: {filepath}")
+
+        # Skip a duplicated header/ticker row only when first date is invalid.
+        if len(df) > 0:
+            first_date = pd.to_datetime(df.iloc[0]['Date'], errors='coerce')
+            if pd.isna(first_date):
+                df = df.iloc[1:].copy()
         
         # Convert columns to appropriate types
         df['Date'] = pd.to_datetime(df['Date'])

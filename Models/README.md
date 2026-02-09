@@ -60,6 +60,7 @@ Current factor configs in `Models/configs/`:
 - `currency_rotation`
 - `dividend_rotation`
 - `macro_hedge`
+- `five_factor_rotation` (12-axis MWU-weighted multi-factor — see `signals/FIVE_FACTOR_ROTATION.md`)
 - `xu100` (benchmark)
 
 Legacy note:

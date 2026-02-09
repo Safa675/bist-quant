@@ -20,16 +20,51 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import numpy as np
+import pickle
 import warnings
 warnings.filterwarnings('ignore')
 
 # Set up paths
 SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = SCRIPT_DIR.parent
-DATA_DIR = SCRIPT_DIR / "data"
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
 
 sys.path.insert(0, str(SCRIPT_DIR))
+
+
+def _resolve_data_dir() -> Path:
+    """Resolve the canonical data directory, preferring shared project data."""
+    candidates = [
+        PROJECT_ROOT / "data",
+        SCRIPT_DIR / "data",
+    ]
+
+    for candidate in candidates:
+        if (candidate / "xu100_prices.csv").exists():
+            return candidate
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
+
+
+def _resolve_fetcher_dir(data_dir: Path) -> Path | None:
+    """Resolve Fetcher-Scrapper location across possible layouts."""
+    candidates = [
+        data_dir / "Fetcher-Scrapper",
+        PROJECT_ROOT / "data" / "Fetcher-Scrapper",
+        SCRIPT_DIR / "data" / "Fetcher-Scrapper",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+DATA_DIR = _resolve_data_dir()
+FETCHER_DIR = _resolve_fetcher_dir(DATA_DIR)
 
 # Set TCMB API key from file
 API_KEY_FILE = DATA_DIR / "EVDS API.txt"
@@ -67,6 +102,11 @@ def run_pipeline():
 
     print_header("BIST REGIME FILTER - FULL PIPELINE")
     print(f"Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Data directory: {DATA_DIR}")
+    if FETCHER_DIR is not None:
+        print(f"Fetcher directory: {FETCHER_DIR}")
+    else:
+        print("Fetcher directory: Not found (TCMB phase will use fallback mode)")
     print(f"Output directory: {OUTPUT_DIR}")
 
     # ================================================================
@@ -75,7 +115,11 @@ def run_pipeline():
     print_header("PHASE 1: FETCHING TCMB DATA")
 
     try:
-        sys.path.append(str(DATA_DIR / "Fetcher-Scrapper"))
+        if FETCHER_DIR is None:
+            raise FileNotFoundError("Fetcher-Scrapper directory not found")
+
+        if str(FETCHER_DIR) not in sys.path:
+            sys.path.append(str(FETCHER_DIR))
         from tcmb_data_fetcher import TCMBDataFetcher
 
         tcmb_fetcher = TCMBDataFetcher(
@@ -103,7 +147,6 @@ def run_pipeline():
     print_header("PHASE 2: LOADING MARKET DATA & FEATURES")
 
     from regime_filter import RegimeFilter
-    from market_data import DataLoader, FeatureEngine
 
     # Initialize regime filter
     rf = RegimeFilter(data_dir=str(DATA_DIR))
@@ -167,17 +210,22 @@ def run_pipeline():
 
         hmm_model = HMMRegimeClassifier(n_regimes=4)
         
-        # Filter for training (Avoid lookahead)
+        # Filter for training (avoid look-ahead leakage in regime labeling)
         hmm_train_features = rf.features[rf.features.index <= TRAIN_END_DATE]
         hmm_model.fit(hmm_train_features)
 
+        # Learn regime name mapping only from training period.
+        hmm_train_predictions = hmm_model.predict(hmm_train_features)
+        hmm_model.label_regimes(hmm_train_features, hmm_train_predictions)
+
+        # Inference on full history with fixed train-derived mapping.
         hmm_predictions = hmm_model.predict(rf.features)
-        hmm_predictions = hmm_model.label_regimes(rf.features, hmm_predictions)
+        if hmm_model.regime_names:
+            hmm_predictions['regime_name'] = hmm_predictions['regime'].map(hmm_model.regime_names).fillna('Neutral')
 
         hmm_model.print_summary()
 
         # Save HMM model
-        import pickle
         hmm_file = OUTPUT_DIR / "hmm_model.pkl"
         with open(hmm_file, 'wb') as f:
             pickle.dump(hmm_model, f)
@@ -239,14 +287,39 @@ def run_pipeline():
             dropout=0.2
         )
 
-        X_seq, y_seq = lstm_model.prepare_sequences(rf.features, simplified_regimes)
-        X_train_seq, X_test_seq, y_train_seq, y_test_seq = lstm_model.train_test_split(X_seq, y_seq, train_ratio=0.8)
-        X_train_scaled, X_test_scaled = lstm_model._scale_sequences(X_train_seq, X_test_seq)
+        X_seq, y_seq, seq_dates = lstm_model.prepare_sequences(
+            rf.features, simplified_regimes, return_dates=True
+        )
+        X_train_seq, X_test_seq, y_train_seq, y_test_seq = lstm_model.train_test_split_by_date(
+            X_seq, y_seq, seq_dates, TRAIN_END_DATE
+        )
+
+        if len(X_train_seq) == 0 or len(X_test_seq) == 0:
+            raise ValueError(
+                f"Insufficient LSTM data after date split (train={len(X_train_seq)}, test={len(X_test_seq)}). "
+                f"Adjust TRAIN_END_DATE or sequence settings."
+            )
+
+        # Keep validation inside training set (do not use test set for early stopping).
+        val_size = max(1, int(len(X_train_seq) * 0.15)) if len(X_train_seq) >= 20 else 0
+        if val_size > 0 and len(X_train_seq) > val_size:
+            X_train_core = X_train_seq[:-val_size]
+            y_train_core = y_train_seq[:-val_size]
+            X_val_seq = X_train_seq[-val_size:]
+            y_val_seq = y_train_seq[-val_size:]
+        else:
+            X_train_core = X_train_seq
+            y_train_core = y_train_seq
+            X_val_seq = None
+            y_val_seq = None
+
+        X_train_scaled, X_test_scaled = lstm_model._scale_sequences(X_train_core, X_test_seq)
+        X_val_scaled = lstm_model._transform_sequences(X_val_seq) if X_val_seq is not None else None
 
         # Train with validation
         lstm_model.train(
-            X_train_scaled, y_train_seq,
-            X_test_scaled, y_test_seq,
+            X_train_scaled, y_train_core,
+            X_val_scaled, y_val_seq,
             epochs=30,
             batch_size=32,
             early_stopping_patience=5

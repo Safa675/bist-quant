@@ -380,7 +380,8 @@ class HMMRegimeClassifier:
         feature_cols = ['return_20d', 'realized_vol_20d', 'max_drawdown_20d', 
                         'usdtry_momentum_20d', 'volume_ratio']
         available = [c for c in feature_cols if c in features_df.columns]
-        X = features_df[available].fillna(method='ffill').fillna(method='bfill').dropna()
+        # Causal imputation only: forward-fill avoids using future information.
+        X = features_df[available].ffill().dropna()
         
         self.scaler.fit(X)
         X_scaled = self.scaler.transform(X)
@@ -397,7 +398,8 @@ class HMMRegimeClassifier:
         feature_cols = ['return_20d', 'realized_vol_20d', 'max_drawdown_20d', 
                         'usdtry_momentum_20d', 'volume_ratio']
         available = [c for c in feature_cols if c in features_df.columns]
-        X = features_df[available].fillna(method='ffill').fillna(method='bfill').dropna()
+        # Causal imputation only: forward-fill avoids using future information.
+        X = features_df[available].ffill().dropna()
         X_scaled = self.scaler.transform(X)
         
         # Causal filtering (Forward-only)

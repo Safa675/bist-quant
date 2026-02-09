@@ -135,14 +135,20 @@ def calculate_momentum_scores(
     # Calculate downside volatility
     downside_vol = calculate_downside_volatility(close_df, vol_lookback)
     
+    # Apply minimum volatility threshold to prevent extreme scores
+    # from division by near-zero volatility
+    MIN_VOL = 0.001  # 0.1% minimum daily volatility
+    downside_vol_safe = downside_vol.clip(lower=MIN_VOL)
+    
     # Risk-adjusted momentum = (12-1 return) / downside volatility
     # Higher is better: good momentum with low downside risk
-    momentum_score = momentum_12_1 / downside_vol
+    momentum_score = momentum_12_1 / downside_vol_safe
     
     # Handle infinities and NaNs
     momentum_score = momentum_score.replace([np.inf, -np.inf], np.nan)
     
     return momentum_score
+
 
 
 # ============================================================================

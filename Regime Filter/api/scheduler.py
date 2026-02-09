@@ -115,7 +115,7 @@ class RegimeScheduler:
         try:
             # Import components (lazy import to avoid circular deps)
             from regime_filter import RegimeFilter
-            from simplified_regime import SimplifiedRegimeClassifier
+            from regime_models import SimplifiedRegimeClassifier
             from models.ensemble_regime import EnsembleRegimeModel
 
             # Initialize regime filter
@@ -133,7 +133,7 @@ class RegimeScheduler:
 
             # Get simplified regime
             simple_classifier = SimplifiedRegimeClassifier()
-            simplified = simple_classifier.classify(rf.regimes)
+            simplified = simple_classifier.classify(rf.regimes)['simplified_regime']
 
             # Get current regime
             current_regime = simplified.iloc[-1]
@@ -167,7 +167,9 @@ class RegimeScheduler:
                     regime=current_regime,
                     date=current_date,
                     regime_changed=regime_changed,
-                    features=rf.features.iloc[-1].to_dict() if rf.features is not None else {}
+                    features=rf.features.iloc[-1].to_dict() if rf.features is not None else {},
+                    rf=rf,
+                    simplified=simplified
                 )
 
             print(f"\nUpdate #{self.update_count} completed successfully")

@@ -159,7 +159,8 @@ def run_predictive_example():
     custom = create_custom_indicators(data['XU100_Close'], data.get('USDTRY'), leading)
     
     # Combine
-    all_features = pd.concat([features, leading, custom], axis=1).ffill().bfill()
+    # Use causal fill only to avoid injecting future information in examples.
+    all_features = pd.concat([features, leading, custom], axis=1).ffill()
     
     # 4. Train Model
     print("Training predictive model...")
