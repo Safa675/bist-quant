@@ -2,7 +2,9 @@ import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 
-const DATA_DIR = join(process.cwd(), "data");
+const DATA_DIR = process.env.VERCEL
+    ? "/tmp/bist-quant-ai-data"
+    : join(process.cwd(), "data");
 const STORE_PATH = join(DATA_DIR, "signal_store.json");
 
 export interface IndicatorPayload {
