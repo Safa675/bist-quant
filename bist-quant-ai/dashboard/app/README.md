@@ -1,16 +1,17 @@
 # BIST Daily Portfolio Dashboard
 
 ## Overview
-Daily portfolio monitoring app built on:
-- `frontend`: Next.js dashboard UI
-- `backend`: FastAPI serving `bist-quant-ai/dashboard/dashboard_data.json`
 
-The app is now dashboard-only (no onboarding or investment-assistant flow).
+Legacy dashboard app for daily portfolio monitoring, consisting of:
+- `frontend/` — Next.js dashboard UI (TailwindCSS + Framer Motion)
+- `backend/` — FastAPI serving dashboard data
+
+> **Note**: This is the original standalone dashboard. The primary web platform is now the parent `bist-quant-ai/` Next.js app with integrated AI agents. This legacy dashboard may be deprecated.
 
 ## Tech Stack
 - Frontend: Next.js 14 + TailwindCSS + Framer Motion
 - Backend: FastAPI + Pydantic
-- Data source: `bist-quant-ai/dashboard/generate_dashboard_data.py`
+- Data source: `generate_dashboard_data.py` → `dashboard_data.json`
 
 ## Frontend Routes
 - `/` → redirects to `/dashboard`
@@ -30,12 +31,23 @@ The app is now dashboard-only (no onboarding or investment-assistant flow).
 
 ## Run
 1. Backend:
-   `uvicorn main:app --reload --port 8000`
-   (from `bist-quant-ai/dashboard/app/backend`)
+   ```bash
+   cd bist-quant-ai/dashboard/app/backend
+   uvicorn main:app --reload --port 8000
+   ```
 2. Frontend:
-   `npm run dev`
-   (from `bist-quant-ai/dashboard/app/frontend`)
+   ```bash
+   cd bist-quant-ai/dashboard/app/frontend
+   npm install
+   npm run dev
+   ```
 
 ## Data Refresh
-Regenerate dashboard payload files:
-`python bist-quant-ai/dashboard/generate_dashboard_data.py`
+
+Regenerate dashboard payload from latest backtest results:
+```bash
+cd bist-quant-ai/dashboard
+python generate_dashboard_data.py
+```
+
+This reads from `Models/results/` and produces `dashboard_data.json` with signal metrics, equity curves, and portfolio analytics.

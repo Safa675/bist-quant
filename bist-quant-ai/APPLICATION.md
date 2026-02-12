@@ -10,18 +10,18 @@ AI-Powered Multi-Agent Trading Intelligence for Emerging Markets
 
 ## What are you building? (250 words)
 
-We're building the first AI-native quantitative trading platform designed for emerging markets. Our system combines 34+ proven factor models with a multi-agent AI architecture that autonomously manages portfolios, monitors risk, and explains every decision in natural language.
+We're building the first AI-native quantitative trading platform designed for emerging markets. Our system combines 34 proven factor models with a multi-agent AI architecture that autonomously manages portfolios, monitors risk, and explains every decision in natural language.
 
 The platform has three AI agents that collaborate:
-- **Portfolio Manager** — Manages factor allocations and rebalancing using signals with up to 102% CAGR (backtested on BIST, 2013-2026)
-- **Risk Manager** — Monitors drawdowns, regime shifts, and volatility targeting using an ensemble detector (XGBoost + LSTM + HMM)
+- **Portfolio Manager** — Manages factor allocations and rebalancing using signals with up to 102.62% CAGR (backtested on BIST, 2017–2026)
+- **Risk Manager** — Monitors drawdowns, regime shifts, and volatility targeting using a simple 2D regime classifier (trend × volatility → 4 states)
 - **Market Analyst** — Analyzes sector rotations, macro drivers, and market conditions
 
 Unlike traditional quant platforms that are black boxes, our agents explain WHY they make decisions using plain language — democratizing institutional-grade tools for retail investors and small prop trading firms in emerging markets.
 
-Our core engine is proven: 34 factor models across value, momentum, quality, breakout, and macro strategies. The top signal achieves 102% CAGR with a 2.92 Sharpe ratio across 10+ years of live backtesting on Borsa Istanbul, including transaction costs, slippage, and regime-based risk management.
+Our core engine is proven: 34 factor models across value, momentum, quality, breakout, trend, size, and macro strategies. The top signal (breakout_value) achieves 102.62% CAGR with a 2.93 Sharpe ratio across 9+ years of backtesting on Borsa Istanbul, including transaction costs, slippage, and regime-based risk management.
 
-The web platform is built on Next.js with the Vercel AI SDK powering agent orchestration. The regime detection pipeline automatically switches between equities and gold during market stress — reducing drawdowns by ~30% historically.
+The web platform is built on Next.js with the Vercel AI SDK powering agent orchestration. The regime detection pipeline automatically rotates between equities and gold during market stress — the macro_hedge strategy achieves 57.90% CAGR with only -30.19% max drawdown.
 
 We're starting with BIST (Turkey) and expanding to other emerging markets where retail investors lack access to sophisticated quantitative tools.
 
@@ -37,18 +37,19 @@ Three specialized agents coordinate using the Vercel AI SDK:
 - Each agent has a distinct persona and expertise domain
 - Natural language explanations make complex quant decisions accessible
 
-### 2. Regime Detection (ML Pipeline)
-An ensemble of three models classifies market regimes in real-time:
-- **XGBoost** — Feature-based classification using 50+ market indicators
-- **LSTM** — Temporal pattern recognition on price sequences
-- **Hidden Markov Model** — Probabilistic state transitions
-- Consensus voting determines the final regime (Bull/Bear/Recovery/Stress)
+### 2. Regime Detection
+A simple but effective 2-dimensional regime classifier:
+- **Dimension 1**: Trend — Price vs moving average
+- **Dimension 2**: Volatility — Realized vol percentile (20d)
+- **Output**: 4 regimes (Bull, Bear, Recovery, Stress)
+- Hysteresis filter prevents regime-flipping noise
 
 ### 3. Factor Signal Generation
-Machine learning enhances traditional factor investing:
+Quantitative factor scoring with multi-axis construction:
+- 13-axis multi-factor rotation (size, value, profitability, momentum, quality, liquidity, trading intensity, sentiment, fundamental momentum, carry, defensive, risk)
+- Quintile-based bucket selection with multi-lookback ensemble
+- Exponentially-weighted factor selection favoring recent performance
 - Dynamic signal combination based on regime context
-- Volatility-adjusted position sizing using realized downside vol
-- Optimal rebalancing timing detection
 
 ---
 
@@ -56,12 +57,14 @@ Machine learning enhances traditional factor investing:
 
 **Working Product with Real Data**
 
-- ✅ 34+ factor models backtested on 10+ years of BIST data
-- ✅ Top signal: 102% CAGR, 2.92 Sharpe, 0.36 Beta
-- ✅ Live regime detection pipeline (ensembled ML models)
+- ✅ 34 factor models backtested on 9+ years of BIST data
+- ✅ Top signal: 102.62% CAGR, 2.93 Sharpe, 0.36 Beta
+- ✅ Average across all 34 strategies: ~63% CAGR, ~2.06 Sharpe
+- ✅ Regime detection pipeline integrated into portfolio engine
 - ✅ Next.js web platform with interactive dashboard
-- ✅ Multi-agent AI chat interface
+- ✅ Multi-agent AI chat interface (Vercel AI SDK + Azure OpenAI)
 - ✅ Real-time signal monitoring and portfolio analytics
+- ✅ Agent health checks and structured logging
 - 🔜 Live trading integration (paper trading → live)
 - 🔜 Multi-market expansion (beyond BIST)
 
@@ -76,14 +79,14 @@ No other platform combines factor investing with conversational AI agents that e
 Most quant platforms target US/EU markets. We built from scratch for emerging markets where data is messier, markets are less efficient (more alpha), and retail investors have fewer tools.
 
 ### 3. Regime-Adaptive Risk Management
-Our ML ensemble automatically detects market regime changes and rotates to gold — reducing max drawdowns by ~30%. This is institutional-grade risk management made accessible.
+Our simple 2D regime classifier detects market state changes and rotates to gold in Bear/Stress markets — achieving 57.90% CAGR on macro_hedge with only -30.19% max drawdown.
 
 ### 4. Proven Performance
 Not theoretical — our backtests include:
 - Transaction costs (realistic slippage)
 - Liquidity filters (only tradeable stocks)
 - Survivorship bias treatment
-- 10+ years of out-of-sample data
+- 9+ years of data across multiple market cycles
 
 ### 5. Multi-Agent Architecture
 Three specialized agents (portfolio, risk, analyst) that share context and collaborate. Each has domain expertise and provides explainable, actionable insights.
@@ -137,32 +140,32 @@ Three specialized agents (portfolio, risk, analyst) that share context and colla
 │                    │                     │
 │         ┌──────────┴──────────┐         │
 │         │   Quant Engine      │         │
-│         │  (34+ Factor Models)│         │
+│         │  (34 Factor Models) │         │
 │         └──────────┬──────────┘         │
 │                    │                     │
 │         ┌──────────┴──────────┐         │
 │         │  Regime Detection   │         │
-│         │  (XGBoost+LSTM+HMM) │         │
+│         │ (Trend × Volatility)│         │
 │         └─────────────────────┘         │
 └─────────────────────────────────────────┘
 ```
 
 ---
 
-## Key Metrics
+## Key Metrics (February 2026)
 
 | Metric | Value |
 |--------|-------|
-| Top Signal CAGR | 102.18% |
-| Best Sharpe Ratio | 2.92 |
-| Average CAGR (34 signals) | 61.2% |
-| Average Sharpe (34 signals) | 2.01 |
+| Top Signal CAGR | 102.62% |
+| Best Sharpe Ratio | 2.93 |
+| Average CAGR (34 signals) | ~63% |
+| Average Sharpe (34 signals) | ~2.06 |
 | Top Signal Beta | 0.36 |
-| Top Signal Alpha | 82.66% ann. |
-| Backtest Period | 2013-2026 (10+ years) |
+| Top Signal Alpha | 83.03% ann. |
+| Backtest Period | 2017–2026 (9+ years) |
 | Max Drawdown (top signal) | -31.47% |
 | Market Covered | BIST (Borsa Istanbul) |
-| Factor Models | 34+ |
+| Factor Models | 34 |
 | AI Agents | 3 (Portfolio, Risk, Analyst) |
 
 ---
