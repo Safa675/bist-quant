@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { promisify } from "util";
+import { listPublishedSignals, type StoredPublishedSignal } from "@/lib/server/signalStore";
 
 const execFileAsync = promisify(execFile);
 
@@ -12,6 +13,59 @@ const PYTHON_CANDIDATES = ["python3", "python"] as const;
 const REFRESH_THROTTLE_MS = 10_000;
 
 let lastRefreshAtMs = 0;
+
+function mergePublishedSignals(
+    snapshot: Record<string, unknown>,
+    publishedSignals: StoredPublishedSignal[]
+): Record<string, unknown> {
+    if (!publishedSignals.length) {
+        return snapshot;
+    }
+
+    const signals = Array.isArray(snapshot.signals)
+        ? [...(snapshot.signals as Array<Record<string, unknown>>)]
+        : [];
+    const holdingsRoot =
+        snapshot.holdings && typeof snapshot.holdings === "object" && !Array.isArray(snapshot.holdings)
+            ? (snapshot.holdings as Record<string, string[]>)
+            : {};
+    const holdings: Record<string, string[]> = { ...holdingsRoot };
+    const allPublishedNames = new Set<string>(
+        publishedSignals
+            .map((item) => item.signal?.name)
+            .filter((name): name is string => typeof name === "string" && name.length > 0)
+    );
+
+    const filteredSignals = signals.filter((item) => !allPublishedNames.has(String(item?.name || "")));
+    for (const name of allPublishedNames) {
+        delete holdings[name];
+    }
+
+    const enabledPublishedSignals = publishedSignals.filter(
+        (item) => item.enabled !== false && item.signal?.enabled !== false
+    );
+    for (const published of enabledPublishedSignals) {
+        const signalName = published.signal.name;
+        filteredSignals.push({ ...published.signal, enabled: true });
+        holdings[signalName] = [...published.holdings];
+    }
+
+    filteredSignals.sort((a, b) => {
+        const aCagr = typeof a.cagr === "number" ? a.cagr : Number.NEGATIVE_INFINITY;
+        const bCagr = typeof b.cagr === "number" ? b.cagr : Number.NEGATIVE_INFINITY;
+        return bCagr - aCagr;
+    });
+
+    return {
+        ...snapshot,
+        signals: filteredSignals,
+        holdings,
+        active_signals: filteredSignals.filter((item) => item?.enabled !== false).length,
+        displayed_signals: filteredSignals.length,
+        published_signals_count: publishedSignals.length,
+        published_signals_enabled_count: enabledPublishedSignals.length,
+    };
+}
 
 function readSnapshot(): Record<string, unknown> {
     if (!existsSync(SNAPSHOT_PATH)) {
@@ -76,8 +130,12 @@ export async function loadDashboardData(options?: {
         }
     }
 
+    const snapshot = readSnapshot();
+    const publishedSignals = await listPublishedSignals().catch(() => []);
+    const data = mergePublishedSignals(snapshot, publishedSignals);
+
     return {
-        data: readSnapshot(),
+        data,
         refreshed,
         refreshError,
     };

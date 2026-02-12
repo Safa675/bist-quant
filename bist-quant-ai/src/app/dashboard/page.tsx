@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import SignalTable from "@/components/SignalTable";
 import EquityChart from "@/components/EquityChart";
 import RegimeIndicator from "@/components/RegimeIndicator";
 import PortfolioView from "@/components/PortfolioView";
 import AgentChat from "@/components/AgentChat";
+import PublishedSignalManager from "@/components/PublishedSignalManager";
 import { BarChart3, TrendingUp, Shield, Activity, Clock } from "lucide-react";
 
 /* ---------- Types ---------- */
@@ -41,17 +43,28 @@ export default function DashboardPage() {
     const [selectedSignal, setSelectedSignal] = useState<string>("breakout_value");
     const [activeTab, setActiveTab] = useState<"signals" | "chart" | "holdings">("signals");
 
-    useEffect(() => {
-        fetch("/api/dashboard", { cache: "no-store" })
-            .then((r) => {
-                if (!r.ok) {
-                    throw new Error(`Dashboard API failed (${r.status})`);
-                }
-                return r.json();
-            })
-            .then(setData)
-            .catch(console.error);
+    const loadDashboardData = useCallback(async () => {
+        try {
+            const response = await fetch("/api/dashboard", { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Dashboard API failed (${response.status})`);
+            }
+
+            const payload = (await response.json()) as DashboardData;
+            setData(payload);
+            setSelectedSignal((prev) => {
+                const signalNames = new Set(payload.signals.map((signal) => signal.name));
+                if (signalNames.has(prev)) return prev;
+                return payload.signals[0]?.name || prev;
+            });
+        } catch (error) {
+            console.error(error);
+        }
     }, []);
+
+    useEffect(() => {
+        void loadDashboardData();
+    }, [loadDashboardData]);
 
     if (!data) {
         return (
@@ -88,9 +101,21 @@ export default function DashboardPage() {
     }
 
     // Compute aggregate stats
-    const topSignal = data.signals[0];
-    const avgCagr = (data.signals.reduce((a, s) => a + s.cagr, 0) / data.signals.length).toFixed(1);
-    const avgSharpe = (data.signals.reduce((a, s) => a + s.sharpe, 0) / data.signals.length).toFixed(2);
+    const topSignal = data.signals[0] ?? {
+        name: "n/a",
+        enabled: true,
+        cagr: 0,
+        sharpe: 0,
+        max_dd: 0,
+        ytd: 0,
+        last_rebalance: "n/a",
+    };
+    const avgCagr = data.signals.length
+        ? (data.signals.reduce((a, s) => a + s.cagr, 0) / data.signals.length).toFixed(1)
+        : "0.0";
+    const avgSharpe = data.signals.length
+        ? (data.signals.reduce((a, s) => a + s.sharpe, 0) / data.signals.length).toFixed(2)
+        : "0.00";
 
     return (
         <>
@@ -127,6 +152,9 @@ export default function DashboardPage() {
                                 </span>
                             </div>
                         </div>
+                        <Link href="/signal-construction" className="btn-primary" style={{ padding: "10px 16px", fontSize: "0.82rem" }}>
+                            Build Signals
+                        </Link>
                     </div>
 
                     {/* ===== STAT CARDS ===== */}
@@ -250,7 +278,8 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Right panel — AI Agent Chat */}
-                        <div id="agents" style={{ position: "sticky", top: 88 }}>
+                        <div id="agents" style={{ position: "sticky", top: 88, display: "grid", gap: 16 }}>
+                            <PublishedSignalManager onChanged={loadDashboardData} />
                             <AgentChat holdings={data.holdings} signals={data.signals} regime={data.current_regime} />
                         </div>
                     </div>
