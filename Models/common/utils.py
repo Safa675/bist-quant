@@ -55,6 +55,67 @@ def assert_panel_not_constant(
         raise_signal_data_error(signal_name, f"{context}: cross-section is constant for all dates")
 
 
+def validate_signal_panel_schema(
+    panel: pd.DataFrame,
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+    signal_name: str,
+    context: str = "final signal panel",
+) -> pd.DataFrame:
+    """Validate and align a signal output panel to the common schema contract.
+
+    Contract:
+      - DataFrame with DatetimeIndex dates x ticker columns
+      - no duplicate/NaT dates, monotonic increasing index
+      - no duplicate ticker columns
+      - no object dtype columns
+      - align to provided (dates, tickers) and cast to float
+    """
+    if panel is None or not isinstance(panel, pd.DataFrame):
+        raise_signal_data_error(signal_name, f"{context}: expected DataFrame, got {type(panel).__name__}")
+
+    ref_dates = pd.DatetimeIndex(pd.to_datetime(pd.Index(dates), errors="coerce"))
+    if len(ref_dates) == 0:
+        raise_signal_data_error(signal_name, f"{context}: reference dates are empty")
+    if ref_dates.hasnans:
+        raise_signal_data_error(signal_name, f"{context}: reference dates contain NaT")
+    if ref_dates.has_duplicates:
+        raise_signal_data_error(signal_name, f"{context}: reference dates contain duplicates")
+    if not ref_dates.is_monotonic_increasing:
+        raise_signal_data_error(signal_name, f"{context}: reference dates must be monotonic increasing")
+
+    ref_tickers = pd.Index(tickers)
+    if len(ref_tickers) == 0:
+        raise_signal_data_error(signal_name, f"{context}: reference tickers are empty")
+    if ref_tickers.has_duplicates:
+        dup = ref_tickers[ref_tickers.duplicated()].unique().tolist()[:5]
+        raise_signal_data_error(signal_name, f"{context}: duplicate reference tickers (sample={dup})")
+
+    out = panel.copy()
+    out.index = pd.DatetimeIndex(pd.to_datetime(out.index, errors="coerce"))
+    if out.index.hasnans:
+        raise_signal_data_error(signal_name, f"{context}: panel index contains NaT")
+    if out.index.has_duplicates:
+        raise_signal_data_error(signal_name, f"{context}: panel index contains duplicate dates")
+    if not out.index.is_monotonic_increasing:
+        raise_signal_data_error(signal_name, f"{context}: panel index must be monotonic increasing")
+    if out.columns.has_duplicates:
+        dup_cols = out.columns[out.columns.duplicated()].unique().tolist()[:5]
+        raise_signal_data_error(signal_name, f"{context}: duplicate ticker columns (sample={dup_cols})")
+
+    object_cols = out.select_dtypes(include=["object"]).columns.tolist()
+    if object_cols:
+        raise_signal_data_error(signal_name, f"{context}: object dtype columns not allowed (sample={object_cols[:5]})")
+
+    out = out.reindex(index=ref_dates, columns=ref_tickers)
+    try:
+        out = out.astype(float)
+    except Exception as exc:
+        raise_signal_data_error(signal_name, f"{context}: cannot cast to float ({exc})")
+
+    return out
+
+
 def assert_recent_enough(
     series_dates: pd.DatetimeIndex,
     required_date: pd.Timestamp,

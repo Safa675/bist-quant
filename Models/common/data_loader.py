@@ -3,14 +3,25 @@ Common Data Loader - Centralized data loading to eliminate redundant I/O
 
 This module loads all fundamental data, price data, and regime predictions ONCE
 and caches them in memory for use by all factor models.
+
+Supports multiple data sources:
+- Local parquet/CSV files (primary)
+- Borsapy API (alternative/supplement)
 """
 
 from pathlib import Path
 import pandas as pd
-from typing import Dict
+from typing import Dict, Optional
 import json
 import warnings
+import sys
+
 warnings.filterwarnings('ignore')
+
+# Add Fetcher-Scrapper to path for borsapy_client import
+FETCHER_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "Fetcher-Scrapper"
+if str(FETCHER_DIR) not in sys.path:
+    sys.path.insert(0, str(FETCHER_DIR))
 
 # Regime filter directory candidates (support both naming schemes)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -21,14 +32,14 @@ REGIME_DIR_CANDIDATES = [
 
 
 class DataLoader:
-    """Centralized data loader with caching"""
-    
+    """Centralized data loader with caching and multi-source support"""
+
     def __init__(self, data_dir: Path, regime_model_dir: Path):
         self.data_dir = Path(data_dir)
         self.regime_model_dir = Path(regime_model_dir)
         self.fundamental_dir = self.data_dir / "fundamental_data"
         self.isyatirim_dir = self.data_dir / "price" / "isyatirim_prices"
-        
+
         # Cache
         self._fundamentals = None
         self._prices = None
@@ -42,7 +53,370 @@ class DataLoader:
         self._fundamentals_parquet = None
         self._isyatirim_parquet = None
         self._shares_consolidated = None
-        
+
+        # Borsapy client (lazy-loaded)
+        self._borsapy_client = None
+
+    # -------------------------------------------------------------------------
+    # Borsapy Integration
+    # -------------------------------------------------------------------------
+
+    @property
+    def borsapy(self):
+        """
+        Lazy-load borsapy client.
+
+        Returns:
+            BorsapyClient instance or None if not available
+        """
+        if self._borsapy_client is None:
+            try:
+                from borsapy_client import BorsapyClient
+                self._borsapy_client = BorsapyClient(
+                    cache_dir=self.data_dir / "borsapy_cache"
+                )
+                print("  ✅ Borsapy client initialized")
+            except ImportError as e:
+                print(f"  ⚠️  Borsapy not available: {e}")
+                print("     Install with: pip install borsapy")
+                return None
+        return self._borsapy_client
+
+    def load_prices_borsapy(
+        self,
+        symbols: list[str] = None,
+        period: str = "5y",
+        index: str = "XU100",
+    ) -> pd.DataFrame:
+        """
+        Load prices via borsapy API (alternative to local files).
+
+        Args:
+            symbols: List of symbols. If None, uses index components.
+            period: Data period (e.g., "1y", "5y", "max")
+            index: Index for default symbols (e.g., "XU100", "XU030")
+
+        Returns:
+            DataFrame in long format (Date, Ticker, OHLCV)
+        """
+        if self.borsapy is None:
+            print("  ⚠️  Borsapy not available, cannot load prices")
+            return pd.DataFrame()
+
+        print(f"\n📊 Loading prices via borsapy (period={period})...")
+
+        if symbols is None:
+            symbols = self.borsapy.get_index_components(index)
+            print(f"  Using {len(symbols)} symbols from {index}")
+
+        result = self.borsapy.batch_download_to_long(
+            symbols=symbols,
+            period=period,
+            group_by="ticker",
+            add_is_suffix=False,
+        )
+
+        if result.empty:
+            print("  ⚠️  No data returned from borsapy")
+            return pd.DataFrame()
+
+        loaded = result["Ticker"].dropna().nunique() if "Ticker" in result.columns else 0
+        print(f"  ✅ Loaded {len(result)} price records for {loaded}/{len(symbols)} tickers")
+        return result
+
+    def get_index_components_borsapy(self, index: str = "XU100") -> list[str]:
+        """
+        Get index components via borsapy.
+
+        Args:
+            index: Index name (e.g., "XU100", "XU030", "XBANK")
+
+        Returns:
+            List of ticker symbols
+        """
+        if self.borsapy is None:
+            return []
+        return self.borsapy.get_index_components(index)
+
+    def get_financials_borsapy(self, symbol: str) -> dict[str, pd.DataFrame]:
+        """
+        Get financial statements via borsapy.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            Dict with balance_sheet, income_stmt, cashflow DataFrames
+        """
+        if self.borsapy is None:
+            return {}
+        return self.borsapy.get_financials(symbol)
+
+    def get_dividends_borsapy(self, symbol: str) -> pd.DataFrame:
+        """Get dividend history via borsapy."""
+        if self.borsapy is None:
+            return pd.DataFrame()
+        return self.borsapy.get_dividends(symbol)
+
+    def get_fast_info_borsapy(self, symbol: str) -> dict:
+        """
+        Get current quote via borsapy (15-min delayed).
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            Dict with current price, volume, market cap, etc.
+        """
+        if self.borsapy is None:
+            return {}
+        return self.borsapy.get_fast_info(symbol)
+
+    def screen_stocks_borsapy(self, **filters) -> pd.DataFrame:
+        """
+        Screen stocks using borsapy screener.
+
+        Example:
+            loader.screen_stocks_borsapy(pe_max=10, roe_min=15, index="XU100")
+
+        Returns:
+            DataFrame with matching stocks
+        """
+        if self.borsapy is None:
+            return pd.DataFrame()
+        return self.borsapy.screen_stocks(**filters)
+
+    def get_history_with_indicators_borsapy(
+        self,
+        symbol: str,
+        indicators: list[str] = None,
+        period: str = "2y",
+    ) -> pd.DataFrame:
+        """
+        Get price history with technical indicators via borsapy.
+
+        Args:
+            symbol: Stock symbol
+            indicators: List of indicators (e.g., ["rsi", "macd", "bb"])
+            period: Data period
+
+        Returns:
+            DataFrame with OHLCV + indicator columns
+        """
+        if self.borsapy is None:
+            return pd.DataFrame()
+        return self.borsapy.get_history_with_indicators(
+            symbol, indicators=indicators, period=period
+        )
+
+    # -------------------------------------------------------------------------
+    # Portfolio Analytics Integration
+    # -------------------------------------------------------------------------
+
+    def create_portfolio_analytics(
+        self,
+        holdings: dict[str, float] = None,
+        weights: dict[str, float] = None,
+        returns: "pd.Series" = None,
+        benchmark: str = "XU100",
+        name: str = "Portfolio",
+    ):
+        """
+        Create a PortfolioAnalytics instance.
+
+        Args:
+            holdings: Dict mapping symbol -> quantity (optional)
+            weights: Dict mapping symbol -> weight (optional)
+            returns: Pre-computed returns series (optional)
+            benchmark: Benchmark symbol (default "XU100")
+            name: Portfolio name
+
+        Returns:
+            PortfolioAnalytics instance
+
+        Example:
+            analytics = loader.create_portfolio_analytics(
+                holdings={"THYAO": 100, "AKBNK": 200},
+                benchmark="XU100"
+            )
+            print(analytics.summary())
+        """
+        try:
+            from Models.analytics import PortfolioAnalytics
+        except ImportError:
+            # Try relative import
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from analytics import PortfolioAnalytics
+
+        # If returns provided directly, use them
+        if returns is not None:
+            benchmark_returns = None
+            if benchmark and self._close_df is not None and benchmark in self._close_df.columns:
+                benchmark_returns = self._close_df[benchmark].pct_change().dropna()
+            return PortfolioAnalytics(
+                returns=returns,
+                benchmark_returns=benchmark_returns,
+                name=name,
+            )
+
+        # Otherwise, create from holdings/weights and price data
+        if self._close_df is None:
+            raise ValueError("Price data not loaded. Call load_prices() first.")
+
+        # Get benchmark returns
+        benchmark_returns = None
+        if benchmark and benchmark in self._close_df.columns:
+            benchmark_returns = self._close_df[benchmark].pct_change().dropna()
+
+        # Create from holdings
+        if holdings:
+            return PortfolioAnalytics.from_holdings(
+                holdings=holdings,
+                close_df=self._close_df,
+                benchmark_col=benchmark if benchmark in self._close_df.columns else None,
+                weights=weights,
+                name=name,
+            )
+
+        # Create from weights only (equal quantity assumed)
+        if weights:
+            holdings = {s: 1.0 for s in weights.keys()}
+            return PortfolioAnalytics.from_holdings(
+                holdings=holdings,
+                close_df=self._close_df,
+                benchmark_col=benchmark if benchmark in self._close_df.columns else None,
+                weights=weights,
+                name=name,
+            )
+
+        raise ValueError("Either holdings, weights, or returns must be provided")
+
+    def analyze_strategy_performance(
+        self,
+        equity_curve: "pd.Series",
+        benchmark_curve: "pd.Series" = None,
+        name: str = "Strategy",
+    ):
+        """
+        Analyze strategy performance from equity curve.
+
+        Args:
+            equity_curve: Cumulative strategy value series
+            benchmark_curve: Cumulative benchmark value series (optional)
+            name: Strategy name
+
+        Returns:
+            PortfolioAnalytics instance
+        """
+        try:
+            from Models.analytics import PortfolioAnalytics
+        except ImportError:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from analytics import PortfolioAnalytics
+
+        return PortfolioAnalytics.from_equity_curve(
+            equity_curve=equity_curve,
+            benchmark_curve=benchmark_curve,
+            name=name,
+        )
+
+    # -------------------------------------------------------------------------
+    # Macro Events Integration
+    # -------------------------------------------------------------------------
+
+    @property
+    def macro(self):
+        """
+        Lazy-load macro events client.
+
+        Returns:
+            MacroEventsClient instance or None if not available
+        """
+        if not hasattr(self, "_macro_client"):
+            self._macro_client = None
+
+        if self._macro_client is None:
+            try:
+                from macro_events import MacroEventsClient
+                self._macro_client = MacroEventsClient()
+                print("  ✅ Macro events client initialized")
+            except ImportError as e:
+                print(f"  ⚠️  Macro events not available: {e}")
+                return None
+        return self._macro_client
+
+    def get_economic_calendar(
+        self,
+        days_ahead: int = 7,
+        countries: list[str] = None,
+    ) -> "pd.DataFrame":
+        """
+        Get economic calendar events.
+
+        Args:
+            days_ahead: Number of days to look ahead
+            countries: Country codes (e.g., ["TR", "US"])
+
+        Returns:
+            DataFrame with economic events
+        """
+        if self.macro is None:
+            return pd.DataFrame()
+        return self.macro.get_economic_calendar(days_ahead=days_ahead, countries=countries)
+
+    def get_inflation_data(self, periods: int = 24) -> "pd.DataFrame":
+        """
+        Get TCMB inflation data.
+
+        Args:
+            periods: Number of monthly periods
+
+        Returns:
+            DataFrame with inflation data
+        """
+        if self.macro is None:
+            return pd.DataFrame()
+        return self.macro.get_inflation_data(periods=periods)
+
+    def get_bond_yields(self) -> dict:
+        """
+        Get Turkish government bond yields.
+
+        Returns:
+            Dict with 2y, 5y, 10y yields
+        """
+        if self.macro is None:
+            return {}
+        return self.macro.get_bond_yields()
+
+    def get_stock_news(self, symbol: str, limit: int = 10) -> list[dict]:
+        """
+        Get KAP announcements/news for a stock.
+
+        Args:
+            symbol: Stock symbol
+            limit: Maximum number of news items
+
+        Returns:
+            List of news items
+        """
+        if self.macro is None:
+            return []
+        return self.macro.get_stock_news(symbol, limit=limit)
+
+    def get_macro_summary(self) -> dict:
+        """
+        Get comprehensive macro summary.
+
+        Returns:
+            Dict with inflation, yields, sentiment, events
+        """
+        if self.macro is None:
+            return {}
+        return self.macro.get_macro_summary()
+
     def load_prices(self, prices_file: Path) -> pd.DataFrame:
         """Load stock prices"""
         if self._prices is None:

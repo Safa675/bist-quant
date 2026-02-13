@@ -29,6 +29,7 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, str(Path(__file__).parent))
 
 from common.data_loader import DataLoader
+from common.utils import validate_signal_panel_schema
 from signals.profitability_signals import build_profitability_signals
 from signals.value_signals import build_value_signals
 from signals.small_cap_signals import build_small_cap_signals
@@ -59,7 +60,7 @@ from signals.size_rotation_quality_signals import build_size_rotation_quality_si
 from signals.five_factor_rotation_signals import build_five_factor_rotation_signals
 
 # New imported signals from Quantpedia strategies
-from signals.short_term_reversal_signals import build_short_term_reversal_signals
+
 from signals.consistent_momentum_signals import build_consistent_momentum_signals
 from signals.residual_momentum_signals import build_residual_momentum_signals
 from signals.momentum_reversal_volatility_signals import build_momentum_reversal_volatility_signals
@@ -70,6 +71,20 @@ from signals.earnings_quality_signals import build_earnings_quality_signals
 from signals.fscore_reversal_signals import build_fscore_reversal_signals
 from signals.momentum_asset_growth_signals import build_momentum_asset_growth_signals
 from signals.pairs_trading_signals import build_pairs_trading_signals
+
+# Borsapy technical indicator signals
+
+from signals.macd_signals import build_macd_signals
+
+from signals.adx_signals import build_adx_signals
+from signals.supertrend_signals import build_supertrend_signals
+from signals.ema_signals import build_ema_signals
+from signals.atr_signals import build_atr_signals
+from signals.obv_signals import build_obv_signals
+
+from signals.ichimoku_signals import build_ichimoku_signals
+from signals.parabolic_sar_signals import build_parabolic_sar_signals
+
 
 
 # ============================================================================
@@ -123,6 +138,10 @@ DEFAULT_PORTFOLIO_OPTIONS = {
 
     # Portfolio size
     'top_n': 20,
+
+    # Signal execution timing
+    # 1-day lag prevents same-day signal use at trade open (lookahead guard)
+    'signal_lag_days': 1,
 }
 
 SIZE_ROTATION_FACTORS = {"size_rotation", "size_rotation_momentum", "size_rotation_quality"}
@@ -643,74 +662,52 @@ class PortfolioEngine:
         
         elapsed = time.time() - start_time
         print(f"\n✅ Data loading completed in {elapsed:.1f} seconds")
-        
-    def run_factor(self, factor_name: str, override_config: dict = None):
-        """Run backtest for a single factor using its config"""
-        print("\n" + "="*70)
-        print(f"RUNNING {factor_name.upper()} FACTOR")
-        print("="*70)
-        
-        # Load config
-        if override_config:
-            config = override_config
-        else:
-            config = self.signal_configs.get(factor_name)
-            if not config:
-                raise ValueError(f"No config found for factor: {factor_name}")
-        
-        # Check if enabled
-        if not config.get('enabled', True):
-            print(f"⚠️  {factor_name.upper()} is disabled in config")
-            return None
-        
-        # Get rebalancing frequency from config
-        rebalance_freq = config.get('rebalance_frequency', 'quarterly')
-        print(f"Rebalancing frequency: {rebalance_freq}")
-        
-        # Get custom timeline from config (if specified)
-        timeline = config.get('timeline', {})
-        custom_start = timeline.get('start_date')
-        custom_end = timeline.get('end_date')
-        
-        # Use custom dates if specified, otherwise use engine defaults
-        factor_start_date = pd.Timestamp(custom_start) if custom_start else self.start_date
-        factor_end_date = pd.Timestamp(custom_end) if custom_end else self.end_date
 
-        # Optional walk-forward timeline clamp (used by five_factor_rotation)
-        walk_forward_cfg = config.get("walk_forward", {}) if isinstance(config.get("walk_forward", {}), dict) else {}
-        if factor_name == "five_factor_rotation" and walk_forward_cfg.get("enabled", False):
-            first_test_year = walk_forward_cfg.get("first_test_year")
-            last_test_year = walk_forward_cfg.get("last_test_year")
-            if first_test_year is not None:
-                wf_start = pd.Timestamp(year=int(first_test_year), month=1, day=1)
-                if factor_start_date < wf_start:
-                    print(f"Walk-forward start clamp: {factor_start_date.date()} -> {wf_start.date()}")
-                    factor_start_date = wf_start
-            if last_test_year is not None:
-                wf_end = pd.Timestamp(year=int(last_test_year), month=12, day=31)
-                if factor_end_date > wf_end:
-                    print(f"Walk-forward end clamp: {factor_end_date.date()} -> {wf_end.date()}")
-                    factor_end_date = wf_end
-        
-        # Display timeline
-        if custom_start or custom_end:
-            print(f"Custom timeline: {factor_start_date.date()} to {factor_end_date.date()}")
-        
-        start_time = time.time()
+    def _build_signals_for_factor(self, factor_name: str, dates: pd.DatetimeIndex, config: dict):
+        """Build factor signal panel with optional config-based signal parameter overrides."""
         factor_details = {}
-        # Build signals
-        dates = self.close_df.index
-        
+        signal_params = config.get("signal_params", {}) if isinstance(config.get("signal_params"), dict) else {}
+
         if factor_name == "profitability":
-            signals = build_profitability_signals(self.fundamentals, dates, self.loader)
+            operating_income_weight = float(signal_params.get("operating_income_weight", 0.5))
+            gross_profit_weight = float(signal_params.get("gross_profit_weight", 0.5))
+            signals = build_profitability_signals(
+                self.fundamentals,
+                dates,
+                self.loader,
+                operating_income_weight=operating_income_weight,
+                gross_profit_weight=gross_profit_weight,
+            )
         elif factor_name == "value":
-            signals = build_value_signals(self.fundamentals, self.close_df, dates, self.loader)
+            metric_weights = signal_params.get("metric_weights")
+            if not isinstance(metric_weights, dict):
+                metric_weights = None
+            enabled_metrics = signal_params.get("enabled_metrics")
+            if isinstance(enabled_metrics, list):
+                enabled_metrics = [m for m in enabled_metrics if isinstance(m, str)]
+            else:
+                enabled_metrics = None
+            signals = build_value_signals(
+                self.fundamentals,
+                self.close_df,
+                dates,
+                self.loader,
+                metric_weights=metric_weights,
+                enabled_metrics=enabled_metrics,
+            )
         elif factor_name == "small_cap":
             signals = build_small_cap_signals(self.fundamentals, self.close_df, self.volume_df, dates, self.loader)
         elif factor_name == "investment":
             signals = build_investment_signals(self.fundamentals, self.close_df, dates, self.loader)
         elif factor_name == "momentum":
-            signals = build_momentum_signals(self.close_df, dates, self.loader)
+            signals = build_momentum_signals(
+                self.close_df,
+                dates,
+                self.loader,
+                lookback=int(signal_params.get("lookback", 252)),
+                skip=int(signal_params.get("skip", 21)),
+                vol_lookback=int(signal_params.get("vol_lookback", 252)),
+            )
         elif factor_name == "sma":
             # SMA uses close prices only
             signals = build_sma_signals(self.close_df, dates, self.loader)
@@ -766,6 +763,7 @@ class PortfolioEngine:
             cache_cfg = config.get("construction_cache", {})
             debug_cfg = config.get("debug", {})
             orth_cfg = config.get("axis_orthogonalization", {})
+            walk_forward_cfg = config.get("walk_forward", {}) if isinstance(config.get("walk_forward", {}), dict) else {}
             debug_env = os.getenv("FIVE_FACTOR_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
             debug_enabled = bool(debug_cfg.get("enabled", False) or debug_env)
             signals, factor_details = build_five_factor_rotation_signals(
@@ -795,9 +793,7 @@ class PortfolioEngine:
             # ROA Effect: High profitability relative to assets
             signals = build_roa_signals(self.fundamentals, dates, self.loader)
         # === NEW QUANTPEDIA-IMPORTED SIGNALS ===
-        elif factor_name == "short_term_reversal":
-            # Short-Term Reversal: Weekly losers outperform
-            signals = build_short_term_reversal_signals(self.close_df, dates, self.loader)
+
         elif factor_name == "consistent_momentum":
             # Consistent Momentum: Winners in multiple timeframes
             signals = build_consistent_momentum_signals(self.close_df, dates, self.loader)
@@ -828,8 +824,113 @@ class PortfolioEngine:
         elif factor_name == "pairs_trading":
             # Pairs Trading: Mean reversion on correlated pairs
             signals = build_pairs_trading_signals(self.close_df, dates, self.loader)
+        # === BORSAPY TECHNICAL INDICATOR SIGNALS ===
+        elif factor_name == "macd":
+            # MACD Momentum: Bullish histogram = buy signal
+            signals = build_macd_signals(self.close_df, dates, self.loader)
+        elif factor_name == "adx":
+            # ADX Directional Trend: Strong uptrends rank highest
+            high_df = self.prices.pivot_table(index='Date', columns='Ticker', values='High').sort_index()
+            high_df.columns = [c.split('.')[0].upper() for c in high_df.columns]
+            low_df = self.prices.pivot_table(index='Date', columns='Ticker', values='Low').sort_index()
+            low_df.columns = [c.split('.')[0].upper() for c in low_df.columns]
+            signals = build_adx_signals(self.close_df, high_df, low_df, dates, self.loader)
+        elif factor_name == "supertrend":
+            # Supertrend Direction: Buy uptrend, avoid downtrend
+            high_df = self.prices.pivot_table(index='Date', columns='Ticker', values='High').sort_index()
+            high_df.columns = [c.split('.')[0].upper() for c in high_df.columns]
+            low_df = self.prices.pivot_table(index='Date', columns='Ticker', values='Low').sort_index()
+            low_df.columns = [c.split('.')[0].upper() for c in low_df.columns]
+            signals = build_supertrend_signals(self.close_df, high_df, low_df, dates, self.loader)
+        elif factor_name == "ema":
+            # EMA Crossover: Short/long EMA ratio
+            signals = build_ema_signals(self.close_df, dates, self.loader)
+        elif factor_name == "atr":
+            # ATR Low-Volatility: Calmer stocks rank highest
+            high_df = self.prices.pivot_table(index='Date', columns='Ticker', values='High').sort_index()
+            high_df.columns = [c.split('.')[0].upper() for c in high_df.columns]
+            low_df = self.prices.pivot_table(index='Date', columns='Ticker', values='Low').sort_index()
+            low_df.columns = [c.split('.')[0].upper() for c in low_df.columns]
+            signals = build_atr_signals(self.close_df, high_df, low_df, dates, self.loader)
+        elif factor_name == "obv":
+            # OBV Momentum: Rising on-balance volume = accumulation
+            signals = build_obv_signals(self.close_df, self.volume_df, dates, self.loader)
+
+        elif factor_name == "ichimoku":
+            # Ichimoku Cloud: Multi-factor trend composite
+            high_df = self.prices.pivot_table(index='Date', columns='Ticker', values='High').sort_index()
+            high_df.columns = [c.split('.')[0].upper() for c in high_df.columns]
+            low_df = self.prices.pivot_table(index='Date', columns='Ticker', values='Low').sort_index()
+            low_df.columns = [c.split('.')[0].upper() for c in low_df.columns]
+            signals = build_ichimoku_signals(self.close_df, high_df, low_df, dates, self.loader)
+        elif factor_name == "parabolic_sar":
+            # Parabolic SAR: Trend direction signal
+            high_df = self.prices.pivot_table(index='Date', columns='Ticker', values='High').sort_index()
+            high_df.columns = [c.split('.')[0].upper() for c in high_df.columns]
+            low_df = self.prices.pivot_table(index='Date', columns='Ticker', values='Low').sort_index()
+            low_df.columns = [c.split('.')[0].upper() for c in low_df.columns]
+            signals = build_parabolic_sar_signals(self.close_df, high_df, low_df, dates, self.loader)
+
         else:
             raise ValueError(f"Unknown factor: {factor_name}")
+
+        return signals, factor_details
+        
+    def run_factor(self, factor_name: str, override_config: dict = None):
+        """Run backtest for a single factor using its config"""
+        print("\n" + "="*70)
+        print(f"RUNNING {factor_name.upper()} FACTOR")
+        print("="*70)
+        
+        # Load config
+        if override_config:
+            config = override_config
+        else:
+            config = self.signal_configs.get(factor_name)
+            if not config:
+                raise ValueError(f"No config found for factor: {factor_name}")
+        
+        # Check if enabled
+        if not config.get('enabled', True):
+            print(f"⚠️  {factor_name.upper()} is disabled in config")
+            return None
+        
+        # Get rebalancing frequency from config
+        rebalance_freq = config.get('rebalance_frequency', 'quarterly')
+        print(f"Rebalancing frequency: {rebalance_freq}")
+        
+        # Get custom timeline from config (if specified)
+        timeline = config.get('timeline', {})
+        custom_start = timeline.get('start_date')
+        custom_end = timeline.get('end_date')
+        
+        # Use custom dates if specified, otherwise use engine defaults
+        factor_start_date = pd.Timestamp(custom_start) if custom_start else self.start_date
+        factor_end_date = pd.Timestamp(custom_end) if custom_end else self.end_date
+
+        # Optional walk-forward timeline clamp (used by five_factor_rotation)
+        walk_forward_cfg = config.get("walk_forward", {}) if isinstance(config.get("walk_forward", {}), dict) else {}
+        if factor_name == "five_factor_rotation" and walk_forward_cfg.get("enabled", False):
+            first_test_year = walk_forward_cfg.get("first_test_year")
+            last_test_year = walk_forward_cfg.get("last_test_year")
+            if first_test_year is not None:
+                wf_start = pd.Timestamp(year=int(first_test_year), month=1, day=1)
+                if factor_start_date < wf_start:
+                    print(f"Walk-forward start clamp: {factor_start_date.date()} -> {wf_start.date()}")
+                    factor_start_date = wf_start
+            if last_test_year is not None:
+                wf_end = pd.Timestamp(year=int(last_test_year), month=12, day=31)
+                if factor_end_date > wf_end:
+                    print(f"Walk-forward end clamp: {factor_end_date.date()} -> {wf_end.date()}")
+                    factor_end_date = wf_end
+        
+        # Display timeline
+        if custom_start or custom_end:
+            print(f"Custom timeline: {factor_start_date.date()} to {factor_end_date.date()}")
+        
+        start_time = time.time()
+        dates = self.close_df.index
+        signals, factor_details = self._build_signals_for_factor(factor_name, dates, config)
 
         # Get portfolio options from config
         portfolio_options = config.get('portfolio_options', {})
@@ -883,6 +984,14 @@ class PortfolioEngine:
         opts = DEFAULT_PORTFOLIO_OPTIONS.copy()
         if portfolio_options:
             opts.update(portfolio_options)
+        debug_enabled = (
+            str(os.getenv("DEBUG", "")).strip().lower() in {"1", "true", "yes", "on"}
+            or bool(opts.get("debug", False))
+        )
+
+        def dbg(msg: str) -> None:
+            if debug_enabled:
+                print(f"   [DEBUG] {msg}")
 
         # Print active portfolio engineering features
         print(f"\n🔧 Portfolio Engineering Settings:")
@@ -899,6 +1008,7 @@ class PortfolioEngine:
         else:
             print(f"   Slippage: OFF")
         print(f"   Top N Stocks: {opts['top_n']}")
+        print(f"   Signal Lag Days: {int(opts.get('signal_lag_days', 1))}")
 
         # Use provided dates or fall back to engine defaults
         backtest_start = start_date if start_date is not None else self.start_date
@@ -923,6 +1033,31 @@ class PortfolioEngine:
             if n_filtered > 0:
                 print(f"   Filtered {n_filtered} dates with missing XU100 data")
                 open_df = open_df[valid_xu100_mask]
+
+        if open_df.empty:
+            raise ValueError("Backtest window has no valid open prices after filtering")
+        dbg(f"open_df shape={open_df.shape}, dates={open_df.index.min().date()}..{open_df.index.max().date()}")
+
+        # Align and validate incoming signal panel before any trading logic.
+        # We only require contract compliance on the signal's own columns.
+        signal_columns = pd.Index(signals.columns) if isinstance(signals, pd.DataFrame) else pd.Index([])
+        signals = validate_signal_panel_schema(
+            panel=signals,
+            dates=open_df.index,
+            tickers=signal_columns,
+            signal_name=factor_name,
+            context="backtest input signal panel",
+        )
+
+        signal_lag_days = int(opts.get('signal_lag_days', 1))
+        if signal_lag_days < 0:
+            raise ValueError(f"signal_lag_days must be >= 0, got {signal_lag_days}")
+        if signal_lag_days == 0:
+            print("   ⚠️  signal_lag_days=0 (lookahead risk if signals use same-day close)")
+        dbg(f"signals shape={signals.shape}, signal_lag_days={signal_lag_days}")
+
+        # Execution-time signal panel (lagged to avoid lookahead by default).
+        signals_exec = signals.shift(signal_lag_days)
         
         # Align regime series
         # NOTE: Regime model was trained with a train_end_date cutoff.
@@ -974,6 +1109,7 @@ class PortfolioEngine:
         prev_selected = set()
         trade_count = 0
         rebalance_count = 0
+        sanity_rows = []
         
         # Track regime-specific performance
         regime_allocations = self.regime_allocations or REGIME_ALLOCATIONS
@@ -1004,6 +1140,8 @@ class PortfolioEngine:
             regime = regime_series_lagged.get(date, fallback_regime)
             if pd.isna(regime) or regime not in regime_allocations:
                 regime = fallback_regime
+            rebalance_turnover = 0.0
+            day_signal_count = 0
 
             # Regime filter: if disabled, always use 100% allocation
             if opts['use_regime_filter']:
@@ -1020,9 +1158,10 @@ class PortfolioEngine:
                 # Capture old holdings BEFORE updating (for robust trade tracking)
                 old_selected = prev_selected.copy() if prev_selected else set()
                 
-                if allocation > 0 and date in signals.index:
+                if allocation > 0 and date in signals_exec.index:
                     # Get signals for this date
-                    day_signals = signals.loc[date].dropna()
+                    day_signals = signals_exec.loc[date].dropna()
+                    day_signal_count = int(day_signals.shape[0])
                     
                     # Special handling for XU100 benchmark (skip liquidity filter, allow single holding)
                     if factor_name == "xu100":
@@ -1055,6 +1194,17 @@ class PortfolioEngine:
                             new_positions = set(current_holdings) - old_selected
                             trade_count += len(new_positions)
                             prev_selected = set(current_holdings)
+
+                union_names = old_selected.union(set(current_holdings))
+                if union_names:
+                    entered = set(current_holdings) - old_selected
+                    exited = old_selected - set(current_holdings)
+                    rebalance_turnover = (len(entered) + len(exited)) / len(union_names)
+                dbg(
+                    f"rebalance {date.date()} regime={regime} alloc={allocation:.2f} "
+                    f"signals={day_signal_count} holdings={len(current_holdings)} "
+                    f"turnover={rebalance_turnover:.3f}"
+                )
             else:
                 old_selected = set()  # No rebalance, no turnover
 
@@ -1099,6 +1249,14 @@ class PortfolioEngine:
                     # Equal weight
                     weights = pd.Series(1.0 / len(active_holdings), index=active_holdings)
 
+                weight_sum_raw = float(weights.sum())
+                if not np.isfinite(weight_sum_raw):
+                    raise ValueError(f"Invalid weight sum on {date.date()}: {weight_sum_raw}")
+                if not np.isclose(weight_sum_raw, 1.0, atol=1e-6):
+                    raise ValueError(
+                        f"Weights do not sum to 1 on {date.date()}: {weight_sum_raw:.8f}"
+                    )
+
                 stock_return = 0.0
                 for ticker in active_holdings:
                     if ticker in open_fwd_ret.columns:
@@ -1109,8 +1267,9 @@ class PortfolioEngine:
                 # Apply slippage (optional) - market-cap-based for all factors
                 if opts['use_slippage'] and is_rebalance_day and old_selected:
                     new_positions = list(set(active_holdings) - old_selected)
-                    if new_positions:
-                        turnover = len(new_positions) / max(len(active_holdings), 1)
+                    exited_positions = list(old_selected - set(active_holdings))
+                    if new_positions or exited_positions:
+                        turnover = rebalance_turnover
 
                         if (
                             use_mcap_slippage
@@ -1151,13 +1310,19 @@ class PortfolioEngine:
                     port_ret = allocation * stock_return + (1 - allocation) * xautry_ret
                 else:
                     port_ret = stock_return  # No gold blending
+                effective_weight_sum = weight_sum_raw * allocation
             else:
                 xautry_ret = xautry_fwd_ret.loc[date] if date in xautry_fwd_ret.index else 0.0
                 if opts['use_regime_filter']:
                     port_ret = xautry_ret  # Full gold allocation
                 else:
                     port_ret = 0.0  # No holdings, no return
-            
+                weight_sum_raw = 0.0
+                effective_weight_sum = 0.0
+
+            if not np.isfinite(port_ret):
+                raise ValueError(f"Non-finite portfolio return on {date.date()}: {port_ret}")
+
             # Track regime-specific returns
             regime_returns_tracker[regime].append(port_ret)
             
@@ -1168,6 +1333,19 @@ class PortfolioEngine:
                 'regime': regime,
                 'n_stocks': len(active_holdings),
                 'allocation': allocation,
+            })
+
+            sanity_rows.append({
+                'date': date,
+                'regime': regime,
+                'allocation': float(allocation),
+                'is_rebalance_day': bool(is_rebalance_day),
+                'signal_count': int(day_signal_count),
+                'n_active_holdings': int(len(active_holdings)),
+                'weight_sum_raw': float(weight_sum_raw),
+                'effective_weight_sum': float(effective_weight_sum),
+                'rebalance_turnover': float(rebalance_turnover),
+                'portfolio_return': float(port_ret),
             })
             
             # Track holdings with weights for this day
@@ -1192,6 +1370,18 @@ class PortfolioEngine:
         
         # Build results
         returns_df = pd.DataFrame(portfolio_returns).set_index('date')
+        if returns_df['return'].isna().any():
+            bad_count = int(returns_df['return'].isna().sum())
+            raise ValueError(f"Backtest produced {bad_count} NaN returns")
+
+        sanity_df = pd.DataFrame(sanity_rows).set_index('date') if sanity_rows else pd.DataFrame()
+        if not sanity_df.empty:
+            invested_mask = (sanity_df['allocation'] > 0.0) & (sanity_df['n_active_holdings'] > 0)
+            invested_weights = sanity_df.loc[invested_mask, 'weight_sum_raw']
+            if not invested_weights.empty:
+                if (invested_weights - 1.0).abs().max() > 1e-6:
+                    raise ValueError("Weight-sum sanity check failed: some invested days are not fully weighted")
+
         raw_returns = returns_df['return']
 
         # Apply volatility targeting (optional)
@@ -1268,6 +1458,8 @@ class PortfolioEngine:
             'trade_count': trade_count,
             'returns_df': returns_df,
             'holdings_history': holdings_history,
+            'sanity_checks': sanity_df,
+            'signal_lag_days': signal_lag_days,
         }
 
     def _identify_quarterly_rebalance_days(self, trading_days: pd.DatetimeIndex) -> set:
@@ -1324,6 +1516,13 @@ class PortfolioEngine:
         yearly_bench_col = "XU100_Return"
         yearly_excess_col = "Excess_vs_XU100"
         yearly_table_label = "XU100"
+
+        if benchmark_returns is not None:
+            aligned_bench = pd.concat([returns, benchmark_returns], axis=1, keys=['strategy', 'benchmark']).dropna()
+            if aligned_bench.empty:
+                raise ValueError("XU100 benchmark has no overlap with strategy returns")
+            bench_coverage = len(aligned_bench) / max(len(returns), 1)
+            print(f"   Benchmark alignment (XU100): {len(aligned_bench)}/{len(returns)} days ({bench_coverage:.1%})")
         
         # Save equity curve
         pd.DataFrame({'Equity': results['equity']}).to_csv(output_dir / 'equity_curve.csv')
@@ -1419,6 +1618,9 @@ class PortfolioEngine:
         # Save detailed per-day diagnostics when provided
         if isinstance(results.get('returns_df'), pd.DataFrame) and not results['returns_df'].empty:
             results['returns_df'].to_csv(output_dir / 'returns_detailed.csv')
+
+        if isinstance(results.get('sanity_checks'), pd.DataFrame) and not results['sanity_checks'].empty:
+            results['sanity_checks'].to_csv(output_dir / 'sanity_checks.csv')
 
         # Save gold-arbitrage specific analytics when available
         if isinstance(results.get('gold_tracking_metrics'), pd.DataFrame) and not results['gold_tracking_metrics'].empty:

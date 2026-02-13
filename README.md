@@ -82,9 +82,21 @@ pip install pandas numpy pyarrow openpyxl scipy
 The portfolio engine supports 34 factor strategies. Run any strategy by name:
 
 ```bash
-cd Models
-python portfolio_engine.py breakout_value    # Run single strategy
-python portfolio_engine.py all               # Run all 34 strategies
+cd /home/safa/Documents/Markets/BIST
+python run_backtest.py breakout_value        # Run single strategy
+python run_backtest.py all                   # Run all configured strategies
+python run_backtest.py --list-signals        # List available signals
+python run_backtest.py xu100 --use-config-timeline  # Keep config timeline (optional)
+```
+
+You can also override paths explicitly when running from another environment:
+
+```bash
+python run_backtest.py five_factor_rotation \
+  --start-date 2023-01-01 \
+  --end-date 2023-12-31 \
+  --data-dir /path/to/data \
+  --regime-outputs "/path/to/Regime Filter/outputs"
 ```
 
 Backtest outputs are written to `Models/results/<factor_name>/` and include:

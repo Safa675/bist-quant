@@ -17,6 +17,7 @@ import sys
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from common.utils import validate_signal_panel_schema
 
 
 # ============================================================================
@@ -133,7 +134,7 @@ def calculate_momentum_scores(
     momentum_12_1 = calculate_12_minus_1_momentum(close_df, lookback, skip)
     
     # Calculate downside volatility
-    downside_vol = calculate_downside_volatility(close_df, vol_lookback)
+    downside_vol = calculate_downside_volatility(close_df, lookback=vol_lookback, skip=skip)
     
     # Apply minimum volatility threshold to prevent extreme scores
     # from division by near-zero volatility
@@ -159,6 +160,9 @@ def build_momentum_signals(
     close_df: pd.DataFrame,
     dates: pd.DatetimeIndex,
     data_loader=None,
+    lookback: int = MOMENTUM_LOOKBACK,
+    skip: int = MOMENTUM_SKIP,
+    vol_lookback: int = DOWNSIDE_VOL_LOOKBACK,
 ) -> pd.DataFrame:
     """
     Build momentum signal panel with risk-adjusted scores.
@@ -175,14 +179,26 @@ def build_momentum_signals(
         DataFrame (dates x tickers) with risk-adjusted momentum scores
     """
     print("\n🔧 Building momentum signals...")
-    print(f"  12-1 Momentum: {MOMENTUM_LOOKBACK} days lookback, {MOMENTUM_SKIP} days skip")
-    print(f"  Downside Vol: {DOWNSIDE_VOL_LOOKBACK} days lookback")
+    print(f"  Momentum: {lookback} days lookback, {skip} days skip")
+    print(f"  Downside Vol: {vol_lookback} days lookback")
     
     # Calculate momentum scores
-    momentum_scores = calculate_momentum_scores(close_df)
+    momentum_scores = calculate_momentum_scores(
+        close_df,
+        lookback=lookback,
+        skip=skip,
+        vol_lookback=vol_lookback,
+    )
     
     # Align to requested dates
     result = momentum_scores.reindex(dates)
+    result = validate_signal_panel_schema(
+        result,
+        dates=dates,
+        tickers=close_df.columns,
+        signal_name="momentum",
+        context="final score panel",
+    )
     
     # Summary stats
     valid_scores = result.dropna(how='all')

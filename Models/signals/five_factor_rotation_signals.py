@@ -53,6 +53,7 @@ from common.utils import (
     pick_row_from_sheet,
     raise_signal_data_error,
     sum_ttm,
+    validate_signal_panel_schema,
 )
 from signals.investment_signals import build_investment_signals
 from signals.small_cap_signals import build_small_cap_signals
@@ -978,6 +979,7 @@ def build_five_factor_rotation_signals(
     axis_orthogonalization_config: dict | None = None,
     return_details: bool = False,
     debug: bool = False,
+    include_debug_artifacts: bool = False,
 ) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     """
     Build multi-factor rotation signal panel.
@@ -1283,6 +1285,13 @@ def build_five_factor_rotation_signals(
     final_scores = weighted_sum / weight_sum
 
     final_scores = final_scores.clip(0.0, 100.0)
+    final_scores = validate_signal_panel_schema(
+        final_scores,
+        dates=dates,
+        tickers=tickers,
+        signal_name="five_factor_rotation",
+        context="final score panel",
+    )
     assert_has_cross_section(
         final_scores,
         "five_factor_rotation",
@@ -1335,6 +1344,16 @@ def build_five_factor_rotation_signals(
             "axis_components": aligned_components,
             "active_axes": list(axis_specs.keys()),
         }
+        if include_debug_artifacts:
+            details["axis_raw_scores"] = {
+                axis_name: axis_raw.reindex(index=dates, columns=tickers)
+                for axis_name, (axis_raw, _, _) in axis_specs.items()
+            }
+            details["axis_bucket_returns"] = dict(axis_bucket_returns)
+            details["axis_winning_side"] = {
+                axis_name: axis_summary[axis_name][0]
+                for axis_name in axis_specs.keys()
+            }
         if orth_enabled:
             details["axis_orthogonalization"] = {
                 "method": "cross_sectional_residualization",

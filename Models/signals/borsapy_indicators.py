@@ -703,6 +703,313 @@ class BorsapyIndicators:
         return results
 
 
+    # -------------------------------------------------------------------------
+    # EMA (Exponential Moving Average)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_ema(
+        prices: pd.Series,
+        period: int = 20,
+    ) -> pd.Series:
+        """Calculate EMA for a single price series."""
+        return prices.ewm(span=period, adjust=False).mean()
+
+    @staticmethod
+    def build_ema_panel(
+        close_df: pd.DataFrame,
+        period: int = 20,
+    ) -> pd.DataFrame:
+        """Build EMA panel for all tickers."""
+        print(f"\n📊 Building EMA({period}) panel...")
+        ema_panel = close_df.apply(
+            lambda col: BorsapyIndicators.calculate_ema(col, period=period)
+        )
+        valid_pct = ema_panel.notna().mean().mean() * 100
+        print(f"  ✅ EMA panel: {ema_panel.shape[0]} days × {ema_panel.shape[1]} tickers")
+        print(f"     Coverage: {valid_pct:.1f}%")
+        return ema_panel
+
+    # -------------------------------------------------------------------------
+    # OBV (On-Balance Volume)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_obv(
+        close: pd.Series,
+        volume: pd.Series,
+    ) -> pd.Series:
+        """Calculate OBV for a single ticker."""
+        direction = close.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        obv = (volume * direction).cumsum()
+        return obv
+
+    @staticmethod
+    def build_obv_panel(
+        close_df: pd.DataFrame,
+        volume_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Build OBV panel for all tickers."""
+        print(f"\n📊 Building OBV panel...")
+        tickers = close_df.columns
+        obv_data = {}
+        for ticker in tickers:
+            if ticker in volume_df.columns:
+                obv_data[ticker] = BorsapyIndicators.calculate_obv(
+                    close_df[ticker], volume_df[ticker]
+                )
+        obv_panel = pd.DataFrame(obv_data, index=close_df.index)
+        valid_pct = obv_panel.notna().mean().mean() * 100
+        print(f"  ✅ OBV panel: {obv_panel.shape[0]} days × {obv_panel.shape[1]} tickers")
+        print(f"     Coverage: {valid_pct:.1f}%")
+        return obv_panel
+
+    # -------------------------------------------------------------------------
+    # VWAP (Volume Weighted Average Price)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_vwap(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        volume: pd.Series,
+        period: int = 20,
+    ) -> pd.Series:
+        """Calculate rolling VWAP for a single ticker."""
+        typical_price = (high + low + close) / 3
+        tp_vol = typical_price * volume
+        vwap = tp_vol.rolling(period).sum() / volume.rolling(period).sum().replace(0, np.nan)
+        return vwap
+
+    @staticmethod
+    def build_vwap_panel(
+        high_df: pd.DataFrame,
+        low_df: pd.DataFrame,
+        close_df: pd.DataFrame,
+        volume_df: pd.DataFrame,
+        period: int = 20,
+    ) -> pd.DataFrame:
+        """Build VWAP panel for all tickers."""
+        print(f"\n📊 Building VWAP({period}) panel...")
+        tickers = close_df.columns
+        vwap_data = {}
+        for ticker in tickers:
+            if all(ticker in df.columns for df in [high_df, low_df, volume_df]):
+                vwap_data[ticker] = BorsapyIndicators.calculate_vwap(
+                    high_df[ticker], low_df[ticker], close_df[ticker],
+                    volume_df[ticker], period
+                )
+        vwap_panel = pd.DataFrame(vwap_data, index=close_df.index)
+        valid_pct = vwap_panel.notna().mean().mean() * 100
+        print(f"  ✅ VWAP panel: {vwap_panel.shape[0]} days × {vwap_panel.shape[1]} tickers")
+        print(f"     Coverage: {valid_pct:.1f}%")
+        return vwap_panel
+
+    # -------------------------------------------------------------------------
+    # Ichimoku Cloud
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_ichimoku(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        conversion_period: int = 9,
+        base_period: int = 26,
+        span_b_period: int = 52,
+    ) -> pd.DataFrame:
+        """
+        Calculate Ichimoku Cloud components.
+
+        Returns:
+            DataFrame with columns: conversion, base, span_a, span_b
+        """
+        # Tenkan-sen (Conversion Line)
+        conversion = (high.rolling(conversion_period).max() + low.rolling(conversion_period).min()) / 2
+
+        # Kijun-sen (Base Line)
+        base = (high.rolling(base_period).max() + low.rolling(base_period).min()) / 2
+
+        # Senkou Span A (Leading Span A) — shifted forward by base_period
+        span_a = ((conversion + base) / 2).shift(base_period)
+
+        # Senkou Span B (Leading Span B) — shifted forward by base_period
+        span_b = ((high.rolling(span_b_period).max() + low.rolling(span_b_period).min()) / 2).shift(base_period)
+
+        return pd.DataFrame({
+            "conversion": conversion,
+            "base": base,
+            "span_a": span_a,
+            "span_b": span_b,
+        })
+
+    # -------------------------------------------------------------------------
+    # Parabolic SAR
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_parabolic_sar(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        af_start: float = 0.02,
+        af_step: float = 0.02,
+        af_max: float = 0.20,
+    ) -> pd.DataFrame:
+        """
+        Calculate Parabolic SAR.
+
+        Returns:
+            DataFrame with columns: sar, direction (1=bullish, -1=bearish)
+        """
+        n = len(close)
+        sar = pd.Series(index=close.index, dtype=float)
+        direction = pd.Series(index=close.index, dtype=float)
+
+        if n < 2:
+            return pd.DataFrame({"sar": sar, "direction": direction})
+
+        # Initialize
+        is_long = close.iloc[1] > close.iloc[0]
+        af = af_start
+        ep = high.iloc[0] if is_long else low.iloc[0]
+        sar.iloc[0] = low.iloc[0] if is_long else high.iloc[0]
+        direction.iloc[0] = 1.0 if is_long else -1.0
+
+        for i in range(1, n):
+            prev_sar = sar.iloc[i - 1]
+            new_sar = prev_sar + af * (ep - prev_sar)
+
+            if is_long:
+                new_sar = min(new_sar, low.iloc[i - 1])
+                if i >= 2:
+                    new_sar = min(new_sar, low.iloc[i - 2])
+
+                if low.iloc[i] < new_sar:
+                    is_long = False
+                    new_sar = ep
+                    ep = low.iloc[i]
+                    af = af_start
+                else:
+                    if high.iloc[i] > ep:
+                        ep = high.iloc[i]
+                        af = min(af + af_step, af_max)
+            else:
+                new_sar = max(new_sar, high.iloc[i - 1])
+                if i >= 2:
+                    new_sar = max(new_sar, high.iloc[i - 2])
+
+                if high.iloc[i] > new_sar:
+                    is_long = True
+                    new_sar = ep
+                    ep = high.iloc[i]
+                    af = af_start
+                else:
+                    if low.iloc[i] < ep:
+                        ep = low.iloc[i]
+                        af = min(af + af_step, af_max)
+
+            sar.iloc[i] = new_sar
+            direction.iloc[i] = 1.0 if is_long else -1.0
+
+        return pd.DataFrame({"sar": sar, "direction": direction})
+
+    # -------------------------------------------------------------------------
+    # CCI (Commodity Channel Index)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_cci(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        period: int = 20,
+    ) -> pd.Series:
+        """Calculate CCI for a single ticker."""
+        typical_price = (high + low + close) / 3
+        sma_tp = typical_price.rolling(period).mean()
+        mean_dev = typical_price.rolling(period).apply(
+            lambda x: np.mean(np.abs(x - x.mean())), raw=True
+        )
+        cci = (typical_price - sma_tp) / (0.015 * mean_dev.replace(0, np.nan))
+        return cci
+
+    @staticmethod
+    def build_cci_panel(
+        high_df: pd.DataFrame,
+        low_df: pd.DataFrame,
+        close_df: pd.DataFrame,
+        period: int = 20,
+    ) -> pd.DataFrame:
+        """Build CCI panel for all tickers."""
+        print(f"\n📊 Building CCI({period}) panel...")
+        tickers = close_df.columns
+        cci_data = {}
+        for ticker in tickers:
+            if ticker in high_df.columns and ticker in low_df.columns:
+                cci_data[ticker] = BorsapyIndicators.calculate_cci(
+                    high_df[ticker], low_df[ticker], close_df[ticker], period
+                )
+        cci_panel = pd.DataFrame(cci_data, index=close_df.index)
+        valid_pct = cci_panel.notna().mean().mean() * 100
+        print(f"  ✅ CCI panel: {cci_panel.shape[0]} days × {cci_panel.shape[1]} tickers")
+        print(f"     Coverage: {valid_pct:.1f}%")
+        return cci_panel
+
+    # -------------------------------------------------------------------------
+    # MFI (Money Flow Index)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_mfi(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        volume: pd.Series,
+        period: int = 14,
+    ) -> pd.Series:
+        """Calculate MFI for a single ticker (volume-weighted RSI)."""
+        typical_price = (high + low + close) / 3
+        raw_money_flow = typical_price * volume
+
+        tp_diff = typical_price.diff()
+        pos_flow = raw_money_flow.where(tp_diff > 0, 0.0)
+        neg_flow = raw_money_flow.where(tp_diff < 0, 0.0)
+
+        pos_sum = pos_flow.rolling(period).sum()
+        neg_sum = neg_flow.rolling(period).sum()
+
+        money_ratio = pos_sum / neg_sum.replace(0, np.nan)
+        mfi = 100 - (100 / (1 + money_ratio))
+
+        return mfi
+
+    @staticmethod
+    def build_mfi_panel(
+        high_df: pd.DataFrame,
+        low_df: pd.DataFrame,
+        close_df: pd.DataFrame,
+        volume_df: pd.DataFrame,
+        period: int = 14,
+    ) -> pd.DataFrame:
+        """Build MFI panel for all tickers."""
+        print(f"\n📊 Building MFI({period}) panel...")
+        tickers = close_df.columns
+        mfi_data = {}
+        for ticker in tickers:
+            if all(ticker in df.columns for df in [high_df, low_df, volume_df]):
+                mfi_data[ticker] = BorsapyIndicators.calculate_mfi(
+                    high_df[ticker], low_df[ticker], close_df[ticker],
+                    volume_df[ticker], period
+                )
+        mfi_panel = pd.DataFrame(mfi_data, index=close_df.index)
+        valid_pct = mfi_panel.notna().mean().mean() * 100
+        print(f"  ✅ MFI panel: {mfi_panel.shape[0]} days × {mfi_panel.shape[1]} tickers")
+        print(f"     Coverage: {valid_pct:.1f}%")
+        return mfi_panel
+
+
 # -------------------------------------------------------------------------
 # Convenience Functions
 # -------------------------------------------------------------------------

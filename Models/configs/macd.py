@@ -1,18 +1,25 @@
 """
-Short-Term Reversal Factor Configuration
+MACD Momentum Signal Configuration
 
-Weekly reversal anomaly: losers outperform winners in the short term.
+MACD(12,26,9) momentum strategy:
+- Buy stocks with positive MACD histogram (bullish momentum)
+- Avoid stocks with negative histogram (bearish momentum)
 """
 
 SIGNAL_CONFIG = {
-    'name': 'short_term_reversal',
+    'name': 'macd',
     'enabled': True,
-    'rebalance_frequency': 'weekly',  # Weekly rebalancing for short-term reversal
+    'rebalance_frequency': 'monthly',
     'timeline': {
         'start_date': '2014-01-01',
         'end_date': '2026-12-31',
     },
-    'description': 'Short-term reversal: long weekly losers, avoid weekly winners',
+    'description': 'MACD(12,26,9) momentum - bullish histogram = buy signal',
+    'parameters': {
+        'fast': 12,
+        'slow': 26,
+        'signal': 9,
+    },
 
     'portfolio_options': {
         'use_regime_filter': True,
@@ -29,7 +36,7 @@ SIGNAL_CONFIG = {
         'use_liquidity_filter': True,
         'liquidity_quantile': 0.25,
         'use_slippage': True,
-        'slippage_bps': 10.0,  # Higher slippage for weekly rebalancing
+        'slippage_bps': 5.0,
         'top_n': 20,
     },
 }

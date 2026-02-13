@@ -11,11 +11,13 @@ Both CSV and Parquet versions are kept in sync for flexibility.
 Parquet files are used for faster data loading in the portfolio engine.
 
 Usage:
-    python data/update_prices.py            # update all files
-    python data/update_prices.py --dry-run  # show what would be fetched
+    python data/Fetcher-Scrapper/update_prices.py
+    python data/Fetcher-Scrapper/update_prices.py --source auto
+    python data/Fetcher-Scrapper/update_prices.py --source borsapy
+    python data/Fetcher-Scrapper/update_prices.py --source yfinance --dry-run
 
 Schedule with cron (every weekday at 18:45 Istanbul time):
-    45 18 * * 1-5  cd /home/safa/Documents/Models/BIST && python data/update_prices.py >> data/update.log 2>&1
+    45 18 * * 1-5  cd /home/safa/Documents/Markets/BIST && python data/Fetcher-Scrapper/update_prices.py >> data/update.log 2>&1
 """
 
 import argparse
@@ -24,6 +26,18 @@ from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
+
+try:
+    import borsapy as bp
+    BORSAPY_AVAILABLE = True
+except ImportError:
+    bp = None
+    BORSAPY_AVAILABLE = False
+
+try:
+    from borsapy_client import BorsapyClient
+except Exception:
+    BorsapyClient = None
 
 DATA_DIR = Path(__file__).resolve().parent.parent
 BIST_PRICES = DATA_DIR / "bist_prices_full.csv"
@@ -49,6 +63,45 @@ def last_date_in_csv(path: Path, date_col: str = "Date") -> dt.date:
     return df[date_col].max().date()
 
 
+def _wants_borsapy(source: str) -> bool:
+    """Return whether borsapy should be used for this run."""
+    if source == "yfinance":
+        return False
+    return BORSAPY_AVAILABLE and BorsapyClient is not None
+
+
+def _coerce_price_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Normalize price frame to expected schema and ordering."""
+    normalized = df.rename(columns=str.title).copy()
+    for col in columns:
+        if col not in normalized.columns:
+            normalized[col] = None
+    normalized = normalized[columns]
+    normalized["Date"] = pd.to_datetime(normalized["Date"], errors="coerce")
+    ohlcv = ["Open", "High", "Low", "Close", "Volume"]
+    normalized = normalized.dropna(subset=ohlcv, how="all")
+    return normalized
+
+
+def _append_and_persist(
+    existing_path: Path,
+    parquet_path: Path,
+    new_df: pd.DataFrame,
+    dedupe_cols: list[str],
+    sort_cols: list[str],
+) -> pd.DataFrame:
+    """Append new rows, dedupe, and write both CSV and parquet."""
+    existing = pd.read_csv(existing_path, parse_dates=["Date"])
+    combined = pd.concat([existing, new_df], ignore_index=True)
+    if "Date" in combined.columns:
+        combined = combined[combined["Date"].notna()]
+    combined = combined.drop_duplicates(subset=dedupe_cols, keep="last")
+    combined = combined.sort_values(sort_cols).reset_index(drop=True)
+    combined.to_csv(existing_path, index=False)
+    combined.to_parquet(parquet_path, index=False)
+    return combined
+
+
 def _fallback_bist_tickers_from_existing() -> list[str]:
     """Fallback ticker universe from local historical file."""
     if not BIST_PRICES.exists():
@@ -71,7 +124,13 @@ def _fallback_bist_tickers_from_existing() -> list[str]:
     return sorted(t for t in tickers if t.isalpha())
 
 
-def fetch_bist_tickers() -> list[str]:
+def fetch_bist_tickers(prefer_borsapy: bool = False) -> list[str]:
+    if prefer_borsapy and BORSAPY_AVAILABLE:
+        try:
+            return sorted(bp.Index("XUTUM").component_symbols or [])
+        except Exception as exc:
+            print(f"  Warning: could not fetch ticker list from borsapy/XUTUM: {exc}")
+
     try:
         tables = pd.read_html(MNYET_URL)
         if not tables:
@@ -99,7 +158,7 @@ def fetch_bist_tickers() -> list[str]:
 # 1. BIST all-stock prices
 # ---------------------------------------------------------------------------
 
-def update_bist_prices(dry_run: bool = False) -> None:
+def update_bist_prices(dry_run: bool = False, source: str = "auto") -> None:
     print("\n" + "=" * 60)
     print("BIST STOCK PRICES")
     print("=" * 60)
@@ -116,71 +175,82 @@ def update_bist_prices(dry_run: bool = False) -> None:
         print("  Already up to date.")
         return
 
+    use_borsapy = _wants_borsapy(source)
     if dry_run:
-        print("  [dry-run] Would fetch BIST prices.")
+        provider = "borsapy" if use_borsapy else "yfinance"
+        print(f"  [dry-run] Would fetch BIST prices via {provider}.")
         return
 
-    tickers = fetch_bist_tickers()
+    tickers = fetch_bist_tickers(prefer_borsapy=use_borsapy)
     print(f"  Ticker list      : {len(tickers)} BIST tickers")
 
-    yf_tickers = [f"{t}.IS" for t in tickers]
-    data = yf.download(
-        yf_tickers,
-        start=start,
-        end=end,
-        progress=True,
-        group_by="ticker",
-        auto_adjust=False,
-        threads=True,
-    )
+    new_df = pd.DataFrame()
 
-    if data is None or data.empty:
-        print("  No new data returned by yfinance.")
-        return
+    if use_borsapy:
+        try:
+            client = BorsapyClient(cache_dir=DATA_DIR / "borsapy_cache")
+            new_df = client.batch_download_to_long(
+                symbols=tickers,
+                start=start,
+                end=end,
+                group_by="ticker",
+                add_is_suffix=True,
+            )
+            new_df = _coerce_price_columns(new_df, BIST_COLS)
+            if not new_df.empty:
+                print("  Data source      : borsapy")
+        except Exception as exc:
+            if source == "borsapy":
+                raise
+            print(f"  Warning: borsapy fetch failed, falling back to yfinance: {exc}")
 
-    records = []
-    if isinstance(data.columns, pd.MultiIndex):
-        for ticker in yf_tickers:
-            if ticker not in data.columns.get_level_values(0):
-                continue
-            df_t = data[ticker].copy().reset_index()
-            df_t["Ticker"] = ticker
-            records.append(df_t)
-    else:
-        df_single = data.copy().reset_index()
-        df_single["Ticker"] = yf_tickers[0]
-        records.append(df_single)
+    if new_df.empty and source != "borsapy":
+        yf_tickers = [f"{t}.IS" for t in tickers]
+        data = yf.download(
+            yf_tickers,
+            start=start,
+            end=end,
+            progress=True,
+            group_by="ticker",
+            auto_adjust=False,
+            threads=True,
+        )
 
-    if not records:
-        print("  No records after parsing.")
-        return
+        if data is None or data.empty:
+            print("  No new data returned by yfinance.")
+            return
 
-    new_df = pd.concat(records, ignore_index=True)
-    new_df = new_df.rename(columns=str.title)
-    # Ensure column order matches existing file
-    for col in BIST_COLS:
-        if col not in new_df.columns:
-            new_df[col] = None
-    new_df = new_df[BIST_COLS]
-    new_df["Date"] = pd.to_datetime(new_df["Date"])
+        records = []
+        if isinstance(data.columns, pd.MultiIndex):
+            for ticker in yf_tickers:
+                if ticker not in data.columns.get_level_values(0):
+                    continue
+                df_t = data[ticker].copy().reset_index()
+                df_t["Ticker"] = ticker
+                records.append(df_t)
+        else:
+            df_single = data.copy().reset_index()
+            df_single["Ticker"] = yf_tickers[0]
+            records.append(df_single)
 
-    # Drop rows that are entirely NaN for OHLCV (holiday artifacts)
-    ohlcv = ["Open", "High", "Low", "Close", "Volume"]
-    new_df = new_df.dropna(subset=ohlcv, how="all")
+        if not records:
+            print("  No records after parsing.")
+            return
+
+        new_df = _coerce_price_columns(pd.concat(records, ignore_index=True), BIST_COLS)
+        print("  Data source      : yfinance")
 
     if new_df.empty:
         print("  No valid new rows after cleanup.")
         return
 
-    # Append
-    existing = pd.read_csv(BIST_PRICES, parse_dates=["Date"])
-    combined = pd.concat([existing, new_df], ignore_index=True)
-    combined = combined.drop_duplicates(subset=["Date", "Ticker"], keep="last")
-    combined = combined.sort_values(["Ticker", "Date"]).reset_index(drop=True)
-    combined.to_csv(BIST_PRICES, index=False)
-    
-    # Also save as parquet for faster loading
-    combined.to_parquet(BIST_PRICES_PARQUET, index=False)
+    combined = _append_and_persist(
+        existing_path=BIST_PRICES,
+        parquet_path=BIST_PRICES_PARQUET,
+        new_df=new_df,
+        dedupe_cols=["Date", "Ticker"],
+        sort_cols=["Ticker", "Date"],
+    )
     print(f"  ✅ Parquet updated: {BIST_PRICES_PARQUET.name}")
 
     new_last = combined["Date"].max().date()
@@ -192,7 +262,7 @@ def update_bist_prices(dry_run: bool = False) -> None:
 # 2. XU100 index prices
 # ---------------------------------------------------------------------------
 
-def update_xu100_prices(dry_run: bool = False) -> None:
+def update_xu100_prices(dry_run: bool = False, source: str = "auto") -> None:
     print("\n" + "=" * 60)
     print("XU100 INDEX PRICES")
     print("=" * 60)
@@ -208,51 +278,62 @@ def update_xu100_prices(dry_run: bool = False) -> None:
         print("  Already up to date.")
         return
 
+    use_borsapy = _wants_borsapy(source)
     if dry_run:
-        print("  [dry-run] Would fetch XU100 prices.")
+        provider = "borsapy" if use_borsapy else "yfinance"
+        print(f"  [dry-run] Would fetch XU100 prices via {provider}.")
         return
 
-    for ticker in ("XU100.IS", "XU100"):
-        data = yf.download(
-            ticker,
-            start=start,
-            end=end,
-            progress=True,
-            auto_adjust=False,
-            threads=True,
-        )
-        if data is not None and not data.empty:
-            break
-    else:
-        print("  No XU100 data returned.")
-        return
+    new_df = pd.DataFrame()
 
-    # Flatten MultiIndex columns that yfinance may return for single tickers
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
-    new_df = data.copy().reset_index()
-    new_df["Ticker"] = "XU100.IS"
-    new_df = new_df.rename(columns=str.title)
-    for col in XU100_COLS:
-        if col not in new_df.columns:
-            new_df[col] = None
-    new_df = new_df[XU100_COLS]
-    new_df["Date"] = pd.to_datetime(new_df["Date"])
+    if use_borsapy:
+        try:
+            hist = bp.Index("XU100").history(start=start, end=end, interval="1d")
+            if hist is not None and not hist.empty:
+                new_df = hist.copy().reset_index()
+                new_df["Ticker"] = "XU100.IS"
+                new_df = _coerce_price_columns(new_df, XU100_COLS)
+                print("  Data source      : borsapy")
+        except Exception as exc:
+            if source == "borsapy":
+                raise
+            print(f"  Warning: borsapy fetch failed, falling back to yfinance: {exc}")
+
+    if new_df.empty and source != "borsapy":
+        for ticker in ("XU100.IS", "XU100"):
+            data = yf.download(
+                ticker,
+                start=start,
+                end=end,
+                progress=True,
+                auto_adjust=False,
+                threads=True,
+            )
+            if data is not None and not data.empty:
+                break
+        else:
+            print("  No XU100 data returned.")
+            return
+
+        # Flatten MultiIndex columns that yfinance may return for single tickers
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        new_df = data.copy().reset_index()
+        new_df["Ticker"] = "XU100.IS"
+        new_df = _coerce_price_columns(new_df, XU100_COLS)
+        print("  Data source      : yfinance")
 
     if new_df.empty:
         print("  No valid new rows.")
         return
 
-    existing = pd.read_csv(XU100_PRICES, parse_dates=["Date"])
-    # Remove the header artifact row if present (,,Xu100.Is,...)
-    existing = existing[existing["Date"].notna()]
-    combined = pd.concat([existing, new_df], ignore_index=True)
-    combined = combined.drop_duplicates(subset=["Date"], keep="last")
-    combined = combined.sort_values("Date").reset_index(drop=True)
-    combined.to_csv(XU100_PRICES, index=False)
-    
-    # Also save as parquet for faster loading
-    combined.to_parquet(XU100_PRICES_PARQUET, index=False)
+    combined = _append_and_persist(
+        existing_path=XU100_PRICES,
+        parquet_path=XU100_PRICES_PARQUET,
+        new_df=new_df,
+        dedupe_cols=["Date"],
+        sort_cols=["Date"],
+    )
     print(f"  ✅ Parquet updated: {XU100_PRICES_PARQUET.name}")
 
     new_last = combined["Date"].max().date()
@@ -263,7 +344,7 @@ def update_xu100_prices(dry_run: bool = False) -> None:
 # 3. XAU/TRY (gold price in Turkish lira)
 # ---------------------------------------------------------------------------
 
-def update_xau_try(dry_run: bool = False) -> None:
+def update_xau_try(dry_run: bool = False, source: str = "auto") -> None:
     print("\n" + "=" * 60)
     print("XAU/TRY PRICES")
     print("=" * 60)
@@ -279,29 +360,53 @@ def update_xau_try(dry_run: bool = False) -> None:
         print("  Already up to date.")
         return
 
+    use_borsapy = _wants_borsapy(source)
     if dry_run:
-        print("  [dry-run] Would fetch XAU/TRY prices.")
+        provider = "borsapy" if use_borsapy else "yfinance"
+        print(f"  [dry-run] Would fetch XAU/TRY prices via {provider}.")
         return
 
-    # Download gold (USD) and USD/TRY
-    def _get_close(ticker, start, end):
-        raw = yf.download(ticker, start=start, end=end, progress=False)
-        if isinstance(raw.columns, pd.MultiIndex):
-            raw.columns = raw.columns.get_level_values(0)
-        return raw["Close"]
+    new_df = pd.DataFrame()
 
-    try:
-        xau = _get_close("XAUUSD=X", start, end)
-    except Exception:
-        xau = _get_close("GC=F", start, end)
+    if use_borsapy:
+        try:
+            xau_hist = bp.FX("ons-altin").history(start=start, end=end, interval="1d")
+            usd_hist = bp.FX("USD").history(start=start, end=end, interval="1d")
+            xau = xau_hist["Close"] if xau_hist is not None and not xau_hist.empty else pd.Series(dtype=float)
+            usd_try = usd_hist["Close"] if usd_hist is not None and not usd_hist.empty else pd.Series(dtype=float)
 
-    usd_try = _get_close("USDTRY=X", start, end)
+            new_df = pd.concat([xau, usd_try], axis=1)
+            new_df.columns = ["XAU_USD", "USD_TRY"]
+            new_df["XAU_TRY"] = new_df["XAU_USD"] * new_df["USD_TRY"]
+            new_df = new_df.dropna()
+            new_df.index.name = "Date"
+            if not new_df.empty:
+                print("  Data source      : borsapy")
+        except Exception as exc:
+            if source == "borsapy":
+                raise
+            print(f"  Warning: borsapy fetch failed, falling back to yfinance: {exc}")
 
-    new_df = pd.concat([xau, usd_try], axis=1)
-    new_df.columns = ["XAU_USD", "USD_TRY"]
-    new_df["XAU_TRY"] = new_df["XAU_USD"] * new_df["USD_TRY"]
-    new_df = new_df.dropna()
-    new_df.index.name = "Date"
+    if new_df.empty and source != "borsapy":
+        # Download gold (USD) and USD/TRY from yfinance
+        def _get_close(ticker: str, start_date: str, end_date: str) -> pd.Series:
+            raw = yf.download(ticker, start=start_date, end=end_date, progress=False)
+            if isinstance(raw.columns, pd.MultiIndex):
+                raw.columns = raw.columns.get_level_values(0)
+            return raw["Close"]
+
+        try:
+            xau = _get_close("XAUUSD=X", start, end)
+        except Exception:
+            xau = _get_close("GC=F", start, end)
+
+        usd_try = _get_close("USDTRY=X", start, end)
+        new_df = pd.concat([xau, usd_try], axis=1)
+        new_df.columns = ["XAU_USD", "USD_TRY"]
+        new_df["XAU_TRY"] = new_df["XAU_USD"] * new_df["USD_TRY"]
+        new_df = new_df.dropna()
+        new_df.index.name = "Date"
+        print("  Data source      : yfinance")
 
     if new_df.empty:
         print("  No valid new rows.")
@@ -334,11 +439,23 @@ def main() -> int:
         action="store_true",
         help="Show what would be fetched without downloading.",
     )
+    parser.add_argument(
+        "--source",
+        choices=["auto", "borsapy", "yfinance"],
+        default="auto",
+        help="Data source: auto (prefer borsapy), borsapy only, or yfinance only.",
+    )
     args = parser.parse_args()
 
     print(f"{'=' * 60}")
     print(f"BIST DATA UPDATER  —  {dt.datetime.now():%Y-%m-%d %H:%M}")
     print(f"{'=' * 60}")
+    print(f"Source mode: {args.source}")
+
+    if args.source == "borsapy" and not _wants_borsapy("borsapy"):
+        print("ERROR: --source borsapy selected but borsapy integration is not available.")
+        print("Install borsapy and ensure `data/Fetcher-Scrapper/borsapy_client.py` is importable.")
+        return 1
 
     failures: list[tuple[str, Exception]] = []
 
@@ -349,7 +466,7 @@ def main() -> int:
     ]
     for label, step in steps:
         try:
-            step(dry_run=args.dry_run)
+            step(dry_run=args.dry_run, source=args.source)
         except Exception as exc:
             failures.append((label, exc))
             print(f"\n  ERROR in {label}: {exc}")

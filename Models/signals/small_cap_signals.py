@@ -24,6 +24,7 @@ from common.utils import (
     get_consolidated_sheet,
     pick_row_from_sheet,
     apply_lag,
+    validate_signal_panel_schema,
 )
 
 
@@ -239,5 +240,12 @@ def build_small_cap_signals(
             composite_panel[ticker] = -avg_size
     
     result = pd.DataFrame(composite_panel, index=dates)
+    result = validate_signal_panel_schema(
+        result,
+        dates=dates,
+        tickers=close_df.columns,
+        signal_name="small_cap",
+        context="final score panel",
+    )
     print(f"  ✅ Size signals: {result.shape[0]} days × {result.shape[1]} tickers")
     return result

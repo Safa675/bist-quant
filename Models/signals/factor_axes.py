@@ -9,6 +9,7 @@ Functions to:
 
 from typing import Dict, Tuple
 
+import os
 import numpy as np
 import pandas as pd
 
@@ -31,9 +32,100 @@ MIN_ROLLING_OBS_RATIO = 0.5
 # HELPER FUNCTIONS
 # ============================================================================
 
+DEBUG_ENV_VAR = "DEBUG"
+
+
+def _debug_enabled() -> bool:
+    return os.getenv(DEBUG_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _debug_log(message: str) -> None:
+    if _debug_enabled():
+        print(f"  [FACTOR_DEBUG] {message}")
+
+
+def _validate_reference_axes(
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+    context: str,
+) -> tuple[pd.DatetimeIndex, pd.Index]:
+    """Validate reference dates/tickers used for panel alignment."""
+    normalized_dates = pd.DatetimeIndex(pd.to_datetime(pd.Index(dates), errors="coerce"))
+    if len(normalized_dates) == 0:
+        raise ValueError(f"{context}: dates index is empty")
+    if normalized_dates.hasnans:
+        raise ValueError(f"{context}: dates index contains NaT")
+    if normalized_dates.has_duplicates:
+        raise ValueError(f"{context}: dates index contains duplicate entries")
+    if not normalized_dates.is_monotonic_increasing:
+        raise ValueError(f"{context}: dates index must be monotonic increasing")
+
+    normalized_tickers = pd.Index(tickers)
+    if len(normalized_tickers) == 0:
+        raise ValueError(f"{context}: ticker index is empty")
+    if normalized_tickers.has_duplicates:
+        duplicate_tickers = normalized_tickers[normalized_tickers.duplicated()].unique().tolist()[:5]
+        raise ValueError(f"{context}: ticker index has duplicates (sample={duplicate_tickers})")
+
+    return normalized_dates, normalized_tickers
+
+
+def _validate_numeric_panel(panel: pd.DataFrame, panel_name: str) -> pd.DataFrame:
+    """Validate raw panel structure before alignment."""
+    if panel is None or not isinstance(panel, pd.DataFrame):
+        raise TypeError(f"{panel_name}: expected pandas.DataFrame")
+
+    normalized = panel.copy()
+    normalized.index = pd.DatetimeIndex(pd.to_datetime(normalized.index, errors="coerce"))
+    if normalized.index.hasnans:
+        raise ValueError(f"{panel_name}: index contains NaT values")
+    if normalized.index.has_duplicates:
+        raise ValueError(f"{panel_name}: index contains duplicate dates")
+    if not normalized.index.is_monotonic_increasing:
+        raise ValueError(f"{panel_name}: index must be monotonic increasing")
+    if normalized.columns.has_duplicates:
+        duplicate_cols = normalized.columns[normalized.columns.duplicated()].unique().tolist()[:5]
+        raise ValueError(f"{panel_name}: duplicate ticker columns found (sample={duplicate_cols})")
+
+    object_cols = normalized.select_dtypes(include=["object"]).columns.tolist()
+    if object_cols:
+        raise TypeError(f"{panel_name}: object dtype columns are not allowed (sample={object_cols[:5]})")
+
+    try:
+        return normalized.astype(float)
+    except Exception as exc:  # pragma: no cover - defensive branch
+        raise TypeError(f"{panel_name}: cannot cast panel to float ({exc})") from exc
+
+
+def _align_panel_to_contract(
+    panel: pd.DataFrame,
+    panel_name: str,
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+) -> pd.DataFrame:
+    validated = _validate_numeric_panel(panel, panel_name)
+    aligned = validated.reindex(index=dates, columns=tickers)
+    _debug_log(
+        f"{panel_name}: shape={aligned.shape[0]}x{aligned.shape[1]}, "
+        f"non_na={int(aligned.notna().sum().sum())}"
+    )
+    return aligned
+
+
+def _get_panel(
+    axis_panels: Dict[str, pd.DataFrame],
+    panel_name: str,
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+) -> pd.DataFrame | None:
+    panel = axis_panels.get(panel_name)
+    if panel is None:
+        return None
+    return _align_panel_to_contract(panel, panel_name, dates, tickers)
+
 def cross_sectional_zscore(panel: pd.DataFrame) -> pd.DataFrame:
     """Cross-sectional z-score by date."""
-    panel = panel.astype(float)
+    panel = _validate_numeric_panel(panel, "cross_sectional_zscore_input")
     row_mean = panel.mean(axis=1)
     row_std = panel.std(axis=1).replace(0.0, np.nan)
     return panel.sub(row_mean, axis=0).div(row_std, axis=0)
@@ -45,6 +137,7 @@ def cross_sectional_rank(panel: pd.DataFrame, higher_is_better: bool = True) -> 
     Uses 'average' method for ties, producing ranks in (0, 100].
     The lowest ranked stock gets a small positive value, not 0.
     """
+    panel = _validate_numeric_panel(panel, "cross_sectional_rank_input")
     ranks = panel.rank(axis=1, pct=True, method="average")
     if not higher_is_better:
         ranks = 1.0 - ranks
@@ -81,11 +174,16 @@ def _combine_components_properly(
     Instead of fillna(0) which biases toward neutral, we compute the mean
     only over available components for each (date, ticker) cell.
     """
+    dates, tickers = _validate_reference_axes(dates, tickers, "_combine_components_properly")
+
     if not components:
         return pd.DataFrame(np.nan, index=dates, columns=tickers)
 
     # Stack all components and compute mean ignoring NaNs
-    aligned = [comp.reindex(index=dates, columns=tickers) for _, comp in components]
+    aligned = [
+        _align_panel_to_contract(comp, f"component:{name}", dates, tickers)
+        for name, comp in components
+    ]
     stacked = np.stack([df.values for df in aligned], axis=0)  # (n_components, n_dates, n_tickers)
 
     # Mean over components, ignoring NaNs
@@ -105,22 +203,23 @@ MIN_COMPONENT_DATA_POINTS = 100
 
 def combine_quality_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine quality sub-panels into a single quality axis (equal-weighted)."""
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_quality_axis")
     components = []
 
-    roe = axis_panels.get("quality_roe")
+    roe = _get_panel(axis_panels, "quality_roe", dates, tickers)
     if roe is not None and roe.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("ROE", cross_sectional_zscore(roe)))
 
-    roa = axis_panels.get("quality_roa")
+    roa = _get_panel(axis_panels, "quality_roa", dates, tickers)
     if roa is not None and roa.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("ROA", cross_sectional_zscore(roa)))
 
-    accruals = axis_panels.get("quality_accruals")
+    accruals = _get_panel(axis_panels, "quality_accruals", dates, tickers)
     if accruals is not None and accruals.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         # Low accruals = high quality, so invert
         components.append(("Accruals", -cross_sectional_zscore(accruals)))
 
-    piotroski = axis_panels.get("quality_piotroski")
+    piotroski = _get_panel(axis_panels, "quality_piotroski", dates, tickers)
     if piotroski is not None and piotroski.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("Piotroski", cross_sectional_zscore(piotroski)))
 
@@ -141,19 +240,20 @@ def combine_liquidity_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.Datet
     - Real turnover (volume / shares outstanding)
     - Spread proxy (if available)
     """
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_liquidity_axis")
     components = []
 
-    amihud = axis_panels.get("liquidity_amihud")
+    amihud = _get_panel(axis_panels, "liquidity_amihud", dates, tickers)
     if amihud is not None and amihud.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         # Low Amihud = more liquid = good
         components.append(("Amihud", -cross_sectional_zscore(amihud)))
 
-    turnover = axis_panels.get("liquidity_turnover")
+    turnover = _get_panel(axis_panels, "liquidity_turnover", dates, tickers)
     if turnover is not None and turnover.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         # Higher turnover = more liquid
         components.append(("Turnover", cross_sectional_zscore(turnover)))
 
-    spread = axis_panels.get("liquidity_spread_proxy")
+    spread = _get_panel(axis_panels, "liquidity_spread_proxy", dates, tickers)
     if spread is not None and spread.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         # Low spread = more liquid = good
         components.append(("Spread", -cross_sectional_zscore(spread)))
@@ -177,17 +277,18 @@ def combine_trading_intensity_axis(axis_panels: Dict[str, pd.DataFrame], dates: 
 
     This is distinct from liquidity which measures ease of trading.
     """
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_trading_intensity_axis")
     components = []
 
-    rel_vol = axis_panels.get("trading_intensity_relative_volume")
+    rel_vol = _get_panel(axis_panels, "trading_intensity_relative_volume", dates, tickers)
     if rel_vol is not None and rel_vol.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("RelVol", cross_sectional_zscore(rel_vol)))
 
-    vol_trend = axis_panels.get("trading_intensity_volume_trend")
+    vol_trend = _get_panel(axis_panels, "trading_intensity_volume_trend", dates, tickers)
     if vol_trend is not None and vol_trend.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("VolTrend", cross_sectional_zscore(vol_trend)))
 
-    turnover_vel = axis_panels.get("trading_intensity_turnover_velocity")
+    turnover_vel = _get_panel(axis_panels, "trading_intensity_turnover_velocity", dates, tickers)
     if turnover_vel is not None and turnover_vel.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("TurnoverVel", cross_sectional_zscore(turnover_vel)))
 
@@ -202,17 +303,18 @@ def combine_trading_intensity_axis(axis_panels: Dict[str, pd.DataFrame], dates: 
 
 def combine_sentiment_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine sentiment sub-panels into a single axis (equal-weighted)."""
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_sentiment_axis")
     components = []
 
-    high_pct = axis_panels.get("sentiment_52w_high_pct")
+    high_pct = _get_panel(axis_panels, "sentiment_52w_high_pct", dates, tickers)
     if high_pct is not None and high_pct.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("52wHigh", cross_sectional_zscore(high_pct)))
 
-    accel = axis_panels.get("sentiment_price_acceleration")
+    accel = _get_panel(axis_panels, "sentiment_price_acceleration", dates, tickers)
     if accel is not None and accel.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("PriceAccel", cross_sectional_zscore(accel)))
 
-    reversal = axis_panels.get("sentiment_reversal")
+    reversal = _get_panel(axis_panels, "sentiment_reversal", dates, tickers)
     if reversal is not None and reversal.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("Reversal", cross_sectional_zscore(reversal)))
 
@@ -227,13 +329,14 @@ def combine_sentiment_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.Datet
 
 def combine_fundmom_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine fundamental momentum sub-panels (equal-weighted)."""
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_fundmom_axis")
     components = []
 
-    margin_chg = axis_panels.get("fundmom_margin_change")
+    margin_chg = _get_panel(axis_panels, "fundmom_margin_change", dates, tickers)
     if margin_chg is not None and margin_chg.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("MarginChg", cross_sectional_zscore(margin_chg)))
 
-    sales_accel = axis_panels.get("fundmom_sales_accel")
+    sales_accel = _get_panel(axis_panels, "fundmom_sales_accel", dates, tickers)
     if sales_accel is not None and sales_accel.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("SalesAccel", cross_sectional_zscore(sales_accel)))
 
@@ -248,17 +351,18 @@ def combine_fundmom_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.Datetim
 
 def combine_carry_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine carry sub-panels (dividend yield)."""
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_carry_axis")
     components = []
 
-    div_yield = axis_panels.get("carry_dividend_yield")
+    div_yield = _get_panel(axis_panels, "carry_dividend_yield", dates, tickers)
     if div_yield is not None and div_yield.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("DivYield", cross_sectional_zscore(div_yield)))
 
     # Could add shareholder yield here if data becomes available
-    sh_yield = axis_panels.get("carry_shareholder_yield")
+    sh_yield = _get_panel(axis_panels, "carry_shareholder_yield", dates, tickers)
     if sh_yield is not None and sh_yield.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         # Only add if it's different from div_yield
-        if not div_yield.equals(sh_yield):
+        if div_yield is None or not div_yield.equals(sh_yield):
             components.append(("ShareholderYield", cross_sectional_zscore(sh_yield)))
 
     if not components:
@@ -272,13 +376,14 @@ def combine_carry_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeI
 
 def combine_defensive_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine defensive sub-panels (equal-weighted)."""
+    dates, tickers = _validate_reference_axes(dates, tickers, "combine_defensive_axis")
     components = []
 
-    stability = axis_panels.get("defensive_earnings_stability")
+    stability = _get_panel(axis_panels, "defensive_earnings_stability", dates, tickers)
     if stability is not None and stability.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         components.append(("Stability", cross_sectional_zscore(stability)))
 
-    beta = axis_panels.get("defensive_beta_to_market")
+    beta = _get_panel(axis_panels, "defensive_beta_to_market", dates, tickers)
     if beta is not None and beta.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
         # Low beta = defensive
         components.append(("LowBeta", -cross_sectional_zscore(beta)))
@@ -312,7 +417,27 @@ def quintile_bucket_selection(
         bucket_daily_returns: DataFrame of daily returns per bucket
         bucket_masks: Dict of bucket membership masks
     """
-    axis = axis_raw_scores.reindex(daily_returns.index).astype(float)
+    if n_buckets < 2:
+        raise ValueError("quintile_bucket_selection: n_buckets must be >= 2")
+    if len(lookback_windows) == 0 or len(lookback_windows) != len(lookback_weights):
+        raise ValueError(
+            "quintile_bucket_selection: lookback_windows and lookback_weights must be non-empty and same length"
+        )
+
+    axis_raw = _validate_numeric_panel(axis_raw_scores, "axis_raw_scores")
+    returns_raw = _validate_numeric_panel(daily_returns, "daily_returns")
+
+    common_dates = axis_raw.index.intersection(returns_raw.index).sort_values()
+    common_tickers = axis_raw.columns.intersection(returns_raw.columns)
+    if len(common_dates) == 0:
+        raise ValueError("quintile_bucket_selection: axis_raw_scores and daily_returns have no overlapping dates")
+    if len(common_tickers) == 0:
+        raise ValueError("quintile_bucket_selection: axis_raw_scores and daily_returns have no overlapping tickers")
+
+    axis = axis_raw.reindex(index=common_dates, columns=common_tickers)
+    aligned_returns = returns_raw.reindex(index=common_dates, columns=common_tickers)
+    _debug_log(f"quintile inputs aligned: dates={len(common_dates)}, tickers={len(common_tickers)}")
+
     valid = axis.notna()
     dates = axis.index
 
@@ -332,7 +457,7 @@ def quintile_bucket_selection(
 
         bucket_masks[i] = mask
         bucket_w = mask.shift(1).astype(float)
-        bucket_daily[i] = (daily_returns * bucket_w).sum(axis=1) / bucket_w.sum(axis=1).replace(0.0, np.nan)
+        bucket_daily[i] = (aligned_returns * bucket_w).sum(axis=1) / bucket_w.sum(axis=1).replace(0.0, np.nan)
 
     bucket_cum = {}
     for i in range(n_buckets):
@@ -358,16 +483,30 @@ def compute_quintile_axis_scores(
     n_buckets: int = N_BUCKETS,
 ) -> pd.DataFrame:
     """Compute axis scores based on winning quintile bucket (vectorized)."""
-    axis = axis_raw_scores.astype(float)
+    if n_buckets < 2:
+        raise ValueError("compute_quintile_axis_scores: n_buckets must be >= 2")
+
+    axis = _validate_numeric_panel(axis_raw_scores, "axis_raw_scores")
     valid = axis.notna()
     dates = axis.index
     tickers = axis.columns
+
+    if not isinstance(winning_bucket, pd.Series):
+        raise TypeError("compute_quintile_axis_scores: winning_bucket must be pandas.Series")
+    winner = winning_bucket.copy()
+    winner.index = pd.DatetimeIndex(pd.to_datetime(winner.index, errors="coerce"))
+    if winner.index.hasnans:
+        raise ValueError("compute_quintile_axis_scores: winning_bucket index contains NaT")
+    if winner.index.has_duplicates:
+        raise ValueError("compute_quintile_axis_scores: winning_bucket index has duplicate dates")
+    if not winner.index.is_monotonic_increasing:
+        raise ValueError("compute_quintile_axis_scores: winning_bucket index must be monotonic increasing")
 
     pct_ranks = axis.rank(axis=1, pct=True)
     # Use numpy floor directly (faster than apply)
     stock_buckets = np.floor((pct_ranks * n_buckets).clip(upper=n_buckets - 1e-9))
 
-    winning_bucket_aligned = winning_bucket.reindex(dates).fillna(n_buckets // 2)
+    winning_bucket_aligned = pd.to_numeric(winner.reindex(dates), errors="coerce").fillna(n_buckets // 2)
     winner_broadcast = pd.DataFrame(
         np.tile(winning_bucket_aligned.values[:, np.newaxis], (1, len(tickers))),
         index=dates,

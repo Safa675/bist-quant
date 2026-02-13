@@ -8,6 +8,7 @@ These panels are cached to avoid recomputation.
 from pathlib import Path
 from typing import Dict, Tuple
 
+import os
 import numpy as np
 import pandas as pd
 
@@ -120,6 +121,153 @@ EARNINGS_STABILITY_QUARTERS = 8
 
 
 # ============================================================================
+# FACTOR PANEL CONTRACT / VALIDATION
+# ============================================================================
+
+DEBUG_ENV_VAR = "DEBUG"
+
+FACTOR_PANEL_CONTRACT: Dict[str, Tuple[str, ...]] = {
+    "quality": (
+        "quality_roe",
+        "quality_roa",
+        "quality_accruals",
+        "quality_piotroski",
+    ),
+    "liquidity": (
+        "liquidity_amihud",
+        "liquidity_turnover",
+        "liquidity_spread_proxy",
+    ),
+    "trading_intensity": (
+        "trading_intensity_relative_volume",
+        "trading_intensity_volume_trend",
+        "trading_intensity_turnover_velocity",
+    ),
+    "sentiment": (
+        "sentiment_52w_high_pct",
+        "sentiment_price_acceleration",
+        "sentiment_reversal",
+    ),
+    "fundmom": (
+        "fundmom_margin_change",
+        "fundmom_sales_accel",
+    ),
+    "carry": (
+        "carry_dividend_yield",
+        "carry_shareholder_yield",
+    ),
+    "defensive": (
+        "defensive_earnings_stability",
+        "defensive_beta_to_market",
+    ),
+    "risk": (
+        "realized_volatility",
+        "market_beta",
+    ),
+}
+
+
+def _debug_enabled() -> bool:
+    return os.getenv(DEBUG_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _debug_log(message: str) -> None:
+    if _debug_enabled():
+        print(f"  [FACTOR_DEBUG] {message}")
+
+
+def get_factor_panel_contract() -> Dict[str, Tuple[str, ...]]:
+    """Return expected raw panel keys grouped by factor family."""
+    return {name: tuple(keys) for name, keys in FACTOR_PANEL_CONTRACT.items()}
+
+
+def _validate_reference_axes(
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+    context: str,
+) -> tuple[pd.DatetimeIndex, pd.Index]:
+    """Validate reference axes used by all factor panels."""
+    normalized_dates = pd.DatetimeIndex(pd.to_datetime(pd.Index(dates), errors="coerce"))
+    if len(normalized_dates) == 0:
+        raise ValueError(f"{context}: dates index is empty")
+    if normalized_dates.hasnans:
+        raise ValueError(f"{context}: dates index contains NaT")
+    if normalized_dates.has_duplicates:
+        raise ValueError(f"{context}: dates index contains duplicates")
+    if not normalized_dates.is_monotonic_increasing:
+        raise ValueError(f"{context}: dates index must be monotonic increasing")
+
+    normalized_tickers = pd.Index(tickers)
+    if len(normalized_tickers) == 0:
+        raise ValueError(f"{context}: ticker index is empty")
+    if normalized_tickers.has_duplicates:
+        duplicate_tickers = normalized_tickers[normalized_tickers.duplicated()].unique().tolist()[:5]
+        raise ValueError(f"{context}: ticker index contains duplicates (sample={duplicate_tickers})")
+
+    return normalized_dates, normalized_tickers
+
+
+def _align_numeric_panel(
+    panel: pd.DataFrame,
+    panel_name: str,
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+) -> pd.DataFrame:
+    """Align panel to contract axes and reject object-typed payloads."""
+    if panel is None or not isinstance(panel, pd.DataFrame):
+        raise TypeError(f"{panel_name}: expected pandas.DataFrame")
+
+    aligned = panel.copy()
+    aligned.index = pd.DatetimeIndex(pd.to_datetime(aligned.index, errors="coerce"))
+    if aligned.index.hasnans:
+        raise ValueError(f"{panel_name}: index contains NaT")
+    if aligned.index.has_duplicates:
+        raise ValueError(f"{panel_name}: index contains duplicate dates")
+    if not aligned.index.is_monotonic_increasing:
+        raise ValueError(f"{panel_name}: index must be monotonic increasing")
+    if aligned.columns.has_duplicates:
+        duplicate_cols = aligned.columns[aligned.columns.duplicated()].unique().tolist()[:5]
+        raise ValueError(f"{panel_name}: duplicate ticker columns found (sample={duplicate_cols})")
+
+    object_cols = aligned.select_dtypes(include=["object"]).columns.tolist()
+    if object_cols:
+        raise TypeError(f"{panel_name}: object dtype columns are not allowed (sample={object_cols[:5]})")
+
+    aligned = aligned.reindex(index=dates, columns=tickers)
+    try:
+        aligned = aligned.astype(float)
+    except Exception as exc:  # pragma: no cover - defensive branch
+        raise TypeError(f"{panel_name}: cannot cast panel to float ({exc})") from exc
+
+    _debug_log(
+        f"{panel_name}: shape={aligned.shape[0]}x{aligned.shape[1]}, "
+        f"non_na={int(aligned.notna().sum().sum())}"
+    )
+    return aligned
+
+
+def _finalize_builder_outputs(
+    builder_name: str,
+    raw_panels: Dict[str, pd.DataFrame],
+    expected_keys: Tuple[str, ...],
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+) -> Dict[str, pd.DataFrame]:
+    """Validate builder key schema and panel contract before returning."""
+    missing = [name for name in expected_keys if name not in raw_panels]
+    extra = [name for name in raw_panels.keys() if name not in expected_keys]
+    if missing or extra:
+        raise KeyError(
+            f"{builder_name}: panel keys mismatch; missing={missing or 'none'}, extra={extra or 'none'}"
+        )
+
+    finalized: Dict[str, pd.DataFrame] = {}
+    for key in expected_keys:
+        finalized[key] = _align_numeric_panel(raw_panels[key], key, dates, tickers)
+    return finalized
+
+
+# ============================================================================
 # QUALITY FACTOR PANELS
 # ============================================================================
 
@@ -133,6 +281,9 @@ def build_quality_panels(
     """
     Build Quality factor panels: ROE, ROA, Accruals, Piotroski F-score.
     """
+    del close, fundamentals  # Unused in current implementation.
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_quality_panels")
+
     print("  Building quality factor panels...")
     fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader is not None else None
 
@@ -143,12 +294,18 @@ def build_quality_panels(
 
     if fundamentals_parquet is None:
         print("    ⚠️  No fundamentals parquet - quality panels will be empty")
-        return {
+        return _finalize_builder_outputs(
+            "build_quality_panels",
+            {
             "quality_roe": roe_panel,
             "quality_roa": roa_panel,
             "quality_accruals": accruals_panel,
             "quality_piotroski": piotroski_panel,
-        }
+            },
+            FACTOR_PANEL_CONTRACT["quality"],
+            dates,
+            tickers,
+        )
 
     count = 0
     success_count = 0
@@ -306,12 +463,18 @@ def build_quality_panels(
 
     print(f"    Quality panels built: {success_count}/{len(tickers)} tickers with data")
 
-    return {
-        "quality_roe": roe_panel,
-        "quality_roa": roa_panel,
-        "quality_accruals": accruals_panel,
-        "quality_piotroski": piotroski_panel,
-    }
+    return _finalize_builder_outputs(
+        "build_quality_panels",
+        {
+            "quality_roe": roe_panel,
+            "quality_roa": roa_panel,
+            "quality_accruals": accruals_panel,
+            "quality_piotroski": piotroski_panel,
+        },
+        FACTOR_PANEL_CONTRACT["quality"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -341,7 +504,7 @@ def _load_shares_panel(
     shares.index = pd.to_datetime(shares.index, errors="coerce")
     shares = shares.sort_index()
     shares.columns = pd.Index([str(c).upper() for c in shares.columns])
-    aligned = shares.reindex(index=dates, columns=tickers).ffill()
+    aligned = _align_numeric_panel(shares, "shares_outstanding", dates, tickers).ffill()
     return aligned, True
 
 
@@ -358,10 +521,13 @@ def build_liquidity_panels(
     Real turnover = volume / shares_outstanding (from SERMAYE column in isyatirim data)
     This is distinct from trading intensity which uses relative volume measures.
     """
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_liquidity_panels")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     print("  Building liquidity factor panels...")
 
     daily_returns = close.pct_change().abs()
-    volume = volume_df.reindex(index=dates, columns=tickers)
+    volume = _align_numeric_panel(volume_df, "volume_df", dates, tickers)
 
     # Amihud illiquidity = |return| / dollar volume (lower = more liquid)
     dollar_volume = close * volume
@@ -392,11 +558,17 @@ def build_liquidity_panels(
     print(f"    Liquidity panels: Amihud {amihud_panel.notna().sum().sum()}, "
           f"Turnover {turnover_panel.notna().sum().sum()} data points")
 
-    return {
-        "liquidity_amihud": amihud_panel.reindex(dates),
-        "liquidity_turnover": turnover_panel.reindex(dates),
-        "liquidity_spread_proxy": spread_proxy_panel.reindex(dates),
-    }
+    return _finalize_builder_outputs(
+        "build_liquidity_panels",
+        {
+            "liquidity_amihud": amihud_panel,
+            "liquidity_turnover": turnover_panel,
+            "liquidity_spread_proxy": spread_proxy_panel,
+        },
+        FACTOR_PANEL_CONTRACT["liquidity"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -422,9 +594,12 @@ def build_trading_intensity_panels(
     - Liquidity = ease of trading without price impact (Amihud, spreads)
     - Trading Intensity = level of trading activity / attention
     """
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_trading_intensity_panels")
+    del close  # Not needed for this panel family.
+
     print("  Building trading intensity panels...")
 
-    volume = volume_df.reindex(index=dates, columns=tickers)
+    volume = _align_numeric_panel(volume_df, "volume_df", dates, tickers)
 
     # Relative Volume = volume / avg volume (252-day baseline)
     # High relative volume indicates unusual trading activity
@@ -459,11 +634,17 @@ def build_trading_intensity_panels(
           f"VolTrend {volume_trend.notna().sum().sum()}, "
           f"TurnoverVel {turnover_velocity.notna().sum().sum()} data points")
 
-    return {
-        "trading_intensity_relative_volume": relative_volume.reindex(dates),
-        "trading_intensity_volume_trend": volume_trend.reindex(dates),
-        "trading_intensity_turnover_velocity": turnover_velocity.reindex(dates),
-    }
+    return _finalize_builder_outputs(
+        "build_trading_intensity_panels",
+        {
+            "trading_intensity_relative_volume": relative_volume,
+            "trading_intensity_volume_trend": volume_trend,
+            "trading_intensity_turnover_velocity": turnover_velocity,
+        },
+        FACTOR_PANEL_CONTRACT["trading_intensity"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -478,6 +659,9 @@ def build_sentiment_panels(
     """
     Build Sentiment/Price Action panels: 52-week high proximity, price acceleration, reversal.
     """
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_sentiment_panels")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     print("  Building sentiment/price action panels...")
 
     # 52-week high proximity: current price / 52-week high
@@ -497,11 +681,17 @@ def build_sentiment_panels(
           f"Accel {price_acceleration.notna().sum().sum()}, "
           f"Reversal {reversal.notna().sum().sum()} data points")
 
-    return {
-        "sentiment_52w_high_pct": high_proximity.reindex(dates),
-        "sentiment_price_acceleration": price_acceleration.reindex(dates),
-        "sentiment_reversal": reversal.reindex(dates),
-    }
+    return _finalize_builder_outputs(
+        "build_sentiment_panels",
+        {
+            "sentiment_52w_high_pct": high_proximity,
+            "sentiment_price_acceleration": price_acceleration,
+            "sentiment_reversal": reversal,
+        },
+        FACTOR_PANEL_CONTRACT["sentiment"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -517,6 +707,9 @@ def build_fundamental_momentum_panels(
     """
     Build Fundamental Momentum panels: margin change, sales growth acceleration.
     """
+    del fundamentals  # Unused in current implementation.
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_fundamental_momentum_panels")
+
     print("  Building fundamental momentum panels...")
     fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader is not None else None
 
@@ -525,10 +718,16 @@ def build_fundamental_momentum_panels(
 
     if fundamentals_parquet is None:
         print("    ⚠️  No fundamentals parquet - fundmom panels will be empty")
-        return {
-            "fundmom_margin_change": margin_change_panel,
-            "fundmom_sales_accel": sales_accel_panel,
-        }
+        return _finalize_builder_outputs(
+            "build_fundamental_momentum_panels",
+            {
+                "fundmom_margin_change": margin_change_panel,
+                "fundmom_sales_accel": sales_accel_panel,
+            },
+            FACTOR_PANEL_CONTRACT["fundmom"],
+            dates,
+            tickers,
+        )
 
     count = 0
     success_count = 0
@@ -578,10 +777,16 @@ def build_fundamental_momentum_panels(
 
     print(f"    FundMom panels built: {success_count}/{len(tickers)} tickers with data")
 
-    return {
-        "fundmom_margin_change": margin_change_panel,
-        "fundmom_sales_accel": sales_accel_panel,
-    }
+    return _finalize_builder_outputs(
+        "build_fundamental_momentum_panels",
+        {
+            "fundmom_margin_change": margin_change_panel,
+            "fundmom_sales_accel": sales_accel_panel,
+        },
+        FACTOR_PANEL_CONTRACT["fundmom"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -600,6 +805,10 @@ def build_carry_panels(
 
     Note: In Turkey, buyback data is rarely available, so we focus on dividends.
     """
+    del fundamentals  # Unused in current implementation.
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_carry_panels")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     print("  Building carry factor panels...")
 
     div_yield_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
@@ -630,10 +839,16 @@ def build_carry_panels(
     metrics_count = div_yield_panel.notna().sum().sum()
     if metrics_count > 1000:
         print(f"    Carry panels from metrics: {metrics_count} data points")
-        return {
-            "carry_dividend_yield": div_yield_panel,
-            "carry_shareholder_yield": div_yield_panel.copy(),  # Same as div yield for Turkey
-        }
+        return _finalize_builder_outputs(
+            "build_carry_panels",
+            {
+                "carry_dividend_yield": div_yield_panel,
+                "carry_shareholder_yield": div_yield_panel.copy(),  # Same as div yield for Turkey
+            },
+            FACTOR_PANEL_CONTRACT["carry"],
+            dates,
+            tickers,
+        )
 
     # Otherwise try to build from cash flow statements
     print("    Building dividend yield from cash flow statements + shares outstanding...")
@@ -641,10 +856,16 @@ def build_carry_panels(
 
     if fundamentals_parquet is None:
         print("    ⚠️  No fundamentals parquet - carry panels will be empty")
-        return {
-            "carry_dividend_yield": div_yield_panel,
-            "carry_shareholder_yield": div_yield_panel.copy(),
-        }
+        return _finalize_builder_outputs(
+            "build_carry_panels",
+            {
+                "carry_dividend_yield": div_yield_panel,
+                "carry_shareholder_yield": div_yield_panel.copy(),
+            },
+            FACTOR_PANEL_CONTRACT["carry"],
+            dates,
+            tickers,
+        )
 
     count = 0
     success_count = 0
@@ -717,10 +938,16 @@ def build_carry_panels(
 
     print(f"    Carry panels built: {success_count}/{len(tickers)} tickers with data")
 
-    return {
-        "carry_dividend_yield": div_yield_panel,
-        "carry_shareholder_yield": div_yield_panel.copy(),
-    }
+    return _finalize_builder_outputs(
+        "build_carry_panels",
+        {
+            "carry_dividend_yield": div_yield_panel,
+            "carry_shareholder_yield": div_yield_panel.copy(),
+        },
+        FACTOR_PANEL_CONTRACT["carry"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -737,6 +964,10 @@ def build_defensive_panels(
     """
     Build Defensive/Cyclical panels: earnings stability, beta to market.
     """
+    del fundamentals  # Unused in current implementation.
+    dates, tickers = _validate_reference_axes(dates, tickers, "build_defensive_panels")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     print("  Building defensive factor panels...")
     fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader is not None else None
 
@@ -784,10 +1015,16 @@ def build_defensive_panels(
     # Beta to market
     beta_panel = build_market_beta_panel(close, dates, data_loader)
 
-    return {
-        "defensive_earnings_stability": stability_panel,
-        "defensive_beta_to_market": beta_panel,
-    }
+    return _finalize_builder_outputs(
+        "build_defensive_panels",
+        {
+            "defensive_earnings_stability": stability_panel,
+            "defensive_beta_to_market": beta_panel,
+        },
+        FACTOR_PANEL_CONTRACT["defensive"],
+        dates,
+        tickers,
+    )
 
 
 # ============================================================================
@@ -800,11 +1037,13 @@ def build_realized_volatility_panel(
     lookback: int = VOLATILITY_LOOKBACK_DAYS,
 ) -> pd.DataFrame:
     """Build rolling realized volatility panel (annualized)."""
+    dates, tickers = _validate_reference_axes(dates, close.columns, "build_realized_volatility_panel")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     daily_returns = close.pct_change()
     min_obs = max(int(lookback * MIN_ROLLING_OBS_RATIO), 21)
     vol = daily_returns.rolling(lookback, min_periods=min_obs).std() * np.sqrt(252)
-    # Ensure both rows and columns are properly aligned
-    return vol.reindex(index=dates, columns=close.columns)
+    return _align_numeric_panel(vol, "realized_volatility", dates, tickers)
 
 
 def build_market_beta_panel(
@@ -818,6 +1057,10 @@ def build_market_beta_panel(
     Note: This uses a loop over tickers which can be slow for large universes.
     Consider vectorization if performance is critical.
     """
+    del data_loader  # unused
+    dates, tickers = _validate_reference_axes(dates, close.columns, "build_market_beta_panel")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     daily_returns = close.pct_change()
     min_obs = max(int(lookback * MIN_ROLLING_OBS_RATIO), BETA_MIN_OBS)
 
@@ -825,16 +1068,16 @@ def build_market_beta_panel(
     market_return = daily_returns.mean(axis=1)
     market_var = market_return.rolling(lookback, min_periods=min_obs).var()
 
-    beta_panel = pd.DataFrame(np.nan, index=dates, columns=close.columns, dtype=float)
+    beta_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
 
-    for ticker in close.columns:
+    for ticker in tickers:
         stock_ret = daily_returns[ticker]
         cov = stock_ret.rolling(lookback, min_periods=min_obs).cov(market_return)
         beta = cov / market_var.replace(0.0, np.nan)
         beta_panel[ticker] = beta.reindex(dates)
 
     beta_panel = beta_panel.clip(lower=-2.0, upper=5.0)
-    return beta_panel
+    return _align_numeric_panel(beta_panel, "market_beta", dates, tickers)
 
 
 def build_volatility_beta_panels(
@@ -843,6 +1086,9 @@ def build_volatility_beta_panels(
     data_loader=None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Build realized volatility and market beta panels for risk axis."""
+    dates, tickers = _validate_reference_axes(dates, close.columns, "build_volatility_beta_panels")
+    close = _align_numeric_panel(close, "close", dates, tickers)
+
     print("  Building volatility panel...")
     vol_panel = build_realized_volatility_panel(close, dates)
 

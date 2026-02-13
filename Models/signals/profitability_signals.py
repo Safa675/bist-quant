@@ -20,6 +20,7 @@ from common.utils import (
     apply_lag,
     get_consolidated_sheet,
     pick_row_from_sheet,
+    validate_signal_panel_schema,
 )
 
 
@@ -45,6 +46,8 @@ def calculate_profitability_for_ticker(
     xlsx_path: Path | None,
     ticker: str,
     fundamentals_parquet: pd.DataFrame | None = None,
+    operating_income_weight: float = 0.5,
+    gross_profit_weight: float = 0.5,
 ) -> pd.Series | None:
     """Calculate profitability ratio for a single ticker"""
     if fundamentals_parquet is not None:
@@ -82,8 +85,17 @@ def calculate_profitability_for_ticker(
     if combined.empty:
         return None
 
-    # Profitability = 0.5 * (OpIncome/Assets) + 0.5 * (GrossProfit/Assets)
-    ratio = 0.5 * (combined["OperatingIncome"] / combined["TotalAssets"]) + 0.5 * (
+    total_weight = operating_income_weight + gross_profit_weight
+    if total_weight <= 0:
+        operating_income_weight = 0.5
+        gross_profit_weight = 0.5
+        total_weight = 1.0
+
+    op_weight = operating_income_weight / total_weight
+    gp_weight = gross_profit_weight / total_weight
+
+    # Profitability = weighted sum of operating and gross profitability
+    ratio = op_weight * (combined["OperatingIncome"] / combined["TotalAssets"]) + gp_weight * (
         combined["GrossProfit"] / combined["TotalAssets"]
     )
     ratio = ratio.replace([np.inf, -np.inf], np.nan).dropna()
@@ -96,6 +108,8 @@ def build_profitability_signals(
     fundamentals: Dict,
     dates: pd.DatetimeIndex,
     data_loader=None,
+    operating_income_weight: float = 0.5,
+    gross_profit_weight: float = 0.5,
 ) -> pd.DataFrame:
     """
     Build profitability signal panel with proper lag
@@ -104,6 +118,10 @@ def build_profitability_signals(
         DataFrame (dates x tickers) with profitability scores
     """
     print("\n🔧 Building profitability signals...")
+    print(
+        f"  Component weights: operating_income={operating_income_weight:.2f}, "
+        f"gross_profit={gross_profit_weight:.2f}"
+    )
     
     fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader is not None else None
 
@@ -116,6 +134,8 @@ def build_profitability_signals(
             xlsx_path,
             ticker,
             fundamentals_parquet,
+            operating_income_weight=operating_income_weight,
+            gross_profit_weight=gross_profit_weight,
         )
         
         if prof_series is not None:
@@ -128,5 +148,12 @@ def build_profitability_signals(
                     print(f"  Processed {count} tickers...")
     
     result = pd.DataFrame(panel, index=dates)
+    result = validate_signal_panel_schema(
+        result,
+        dates=dates,
+        tickers=pd.Index(sorted(fundamentals.keys())),
+        signal_name="profitability",
+        context="final score panel",
+    )
     print(f"  ✅ Profitability signals: {result.shape[0]} days × {result.shape[1]} tickers")
     return result

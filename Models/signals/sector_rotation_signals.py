@@ -28,53 +28,56 @@ TOP_SECTORS = 3  # Number of top sectors to overweight
 
 
 # ============================================================================
-# BIST SECTOR MAPPINGS
+# BIST SECTOR MAPPINGS (loaded from borsapy classification)
 # ============================================================================
 
-# Major BIST sector groupings based on common Turkish stock classifications
-BIST_SECTORS = {
-    'Banking': [
-        'AKBNK', 'GARAN', 'ISCTR', 'YKBNK', 'HALKB', 'VAKBN', 'QNBFB', 'TSKB', 'ALBRK', 'KLNMA'
-    ],
-    'Holding': [
-        'SAHOL', 'KCHOL', 'DOHOL', 'GLYHO', 'ECZYT', 'KOZAL', 'TAVHL', 'TTKOM', 'TCELL'
-    ],
-    'Industry': [
-        'TUPRS', 'EREGL', 'KRDMD', 'TOASO', 'FROTO', 'OTKAR', 'ASELS', 'VESTL', 'ARCLK',
-        'PETKM', 'SASA', 'BRISA', 'GUBRF', 'BAGFS', 'TMSN', 'CEMTS', 'KARTN', 'KORDS'
-    ],
-    'Construction': [
-        'ENKAI', 'EKGYO', 'ISGYO', 'HLGYO', 'KLGYO', 'YEOTK', 'OYAYO', 'NTHOL'
-    ],
-    'Retail_Consumer': [
-        'BIMAS', 'MGROS', 'SOKM', 'MAVI', 'BIZIM', 'ULKER', 'BANVT', 'CCOLA', 'AEFES', 'PGSUS'
-    ],
-    'Technology': [
-        'LOGO', 'INDES', 'KAREL', 'ARENA', 'NETAS', 'DGATE', 'PAPIL', 'SMART'
-    ],
-    'Energy': [
-        'AKSEN', 'ODAS', 'ZOREN', 'AYEN', 'AKSA', 'ENJSA', 'AKENR', 'GESAN'
-    ],
-    'Mining_Metals': [
-        'KOZAA', 'IPEKE', 'KLMSN', 'ALKIM', 'SARKY', 'BAKAB', 'DOKTA'
-    ],
-    'Financials_Other': [
-        'SKBNK', 'ALGYO', 'ANHYT', 'ANSGR', 'TURSG', 'AKGRT', 'AGYO', 'ATAGY', 'KAYSE'
-    ],
-}
+_SECTOR_CLASSIFICATION_PATH = Path(__file__).parent.parent.parent / 'data' / 'bist_sector_classification.parquet'
+
+# Cache loaded classification
+_sector_cache: Optional[pd.DataFrame] = None
+
+
+def _load_sector_classification() -> pd.DataFrame:
+    """Load sector classification from borsapy-generated file."""
+    global _sector_cache
+    if _sector_cache is not None:
+        return _sector_cache
+
+    if _SECTOR_CLASSIFICATION_PATH.exists():
+        df = pd.read_parquet(_SECTOR_CLASSIFICATION_PATH)
+        # Filter to only classified tickers
+        df = df[df['sector'].notna() & (df['sector'] != '')]
+        _sector_cache = df
+        return df
+
+    # Fallback: try CSV
+    csv_path = _SECTOR_CLASSIFICATION_PATH.with_suffix('.csv')
+    if csv_path.exists():
+        df = pd.read_csv(csv_path)
+        df = df[df['sector'].notna() & (df['sector'] != '')]
+        _sector_cache = df
+        return df
+
+    print("  ⚠️  No borsapy sector classification found, using empty mapping")
+    _sector_cache = pd.DataFrame(columns=['ticker', 'sector', 'industry'])
+    return _sector_cache
 
 
 def get_sector_for_ticker(ticker: str) -> str:
-    """Get sector for a given ticker."""
-    for sector, tickers in BIST_SECTORS.items():
-        if ticker in tickers:
-            return sector
+    """Get sector for a given ticker using borsapy classification."""
+    df = _load_sector_classification()
+    match = df[df['ticker'] == ticker]
+    if not match.empty:
+        return match.iloc[0]['sector']
     return 'Other'
 
 
 def build_sector_mapping(tickers: list) -> Dict[str, str]:
-    """Build ticker to sector mapping."""
-    return {ticker: get_sector_for_ticker(ticker) for ticker in tickers}
+    """Build ticker to sector mapping using borsapy classification."""
+    df = _load_sector_classification()
+    # Build lookup dict from classification
+    lookup = dict(zip(df['ticker'], df['sector']))
+    return {ticker: lookup.get(ticker, 'Other') for ticker in tickers}
 
 
 # ============================================================================

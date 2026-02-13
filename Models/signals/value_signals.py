@@ -23,6 +23,7 @@ from common.utils import (
     get_consolidated_sheet,
     pick_row_from_sheet,
     apply_lag,
+    validate_signal_panel_schema,
 )
 
 
@@ -140,6 +141,8 @@ def build_value_signals(
     close_df: pd.DataFrame,
     dates: pd.DatetimeIndex,
     data_loader,
+    metric_weights: Dict[str, float] | None = None,
+    enabled_metrics: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Build composite value signal panel
@@ -148,6 +151,8 @@ def build_value_signals(
         DataFrame (dates x tickers) with composite value scores
     """
     print("\n🔧 Building value signals...")
+    if enabled_metrics:
+        print(f"  Enabled metrics: {', '.join(enabled_metrics)}")
     
     # Build individual ratio panels
     panels = {
@@ -260,19 +265,43 @@ def build_value_signals(
     # Combine into composite score
     print("  Combining into composite value score...")
     composite_panel = {}
+
+    default_weights = {
+        "ep": 1.0,
+        "fcfp": 1.0,
+        "ocfev": 1.0,
+        "sp": 1.0,
+        "ebitdaev": 1.0,
+    }
+    if metric_weights:
+        for key, value in metric_weights.items():
+            if key in default_weights and isinstance(value, (int, float)):
+                default_weights[key] = float(value)
+    enabled_set = set(enabled_metrics) if enabled_metrics else set(default_weights.keys())
     
     for ticker in close_df.columns:
         scores_list = []
         for panel_name, panel_df in normalized_panels.items():
+            if panel_name not in enabled_set:
+                continue
             if ticker in panel_df.columns:
-                scores_list.append(panel_df[ticker])
-        
+                weight = default_weights.get(panel_name, 1.0)
+                if weight > 0:
+                    scores_list.append(panel_df[ticker] * weight)
+
         if scores_list:
             # Average across all available normalized ratios
-            composite = pd.concat(scores_list, axis=1).mean(axis=1)
+            stacked = pd.concat(scores_list, axis=1)
+            composite = stacked.mean(axis=1)
             composite_panel[ticker] = composite
     
     result = pd.DataFrame(composite_panel, index=dates)
+    result = validate_signal_panel_schema(
+        result,
+        dates=dates,
+        tickers=close_df.columns,
+        signal_name="value",
+        context="final score panel",
+    )
     print(f"  ✅ Value signals: {result.shape[0]} days × {result.shape[1]} tickers")
     return result
-
