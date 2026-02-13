@@ -1,0 +1,516 @@
+{
+  "factors": [
+    {
+      "name": "accrual",
+      "label": "Accrual",
+      "description": "Accrual anomaly - companies with low accruals (high quality earnings) outperform",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "asset_growth",
+      "label": "Asset Growth",
+      "description": "Asset growth effect - companies with low asset growth (conservative management) outperform",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "betting_against_beta",
+      "label": "Betting Against Beta",
+      "description": "Betting against beta - low beta stocks outperform high beta stocks",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "breakout_value",
+      "label": "Breakout Value",
+      "description": "Value stocks filtered by Donchian breakout - catches value turning points",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "consistent_momentum",
+      "label": "Consistent Momentum",
+      "description": "Consistent momentum: winners in both short and medium-term periods",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "dividend_rotation",
+      "label": "Dividend Rotation",
+      "description": "High dividend yield + low volatility + earnings growth during rate normalization",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "donchian",
+      "label": "Donchian",
+      "description": "20-day Donchian Channel breakout strategy",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "earnings_quality",
+      "label": "Earnings Quality",
+      "description": "Earnings quality: composite of accruals, ROE, CF/A, D/A",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2018-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "five_factor_rotation",
+      "label": "Five Factor Rotation",
+      "description": "5-axis side rotation using standalone factor fundamentals for each axis",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "fscore_reversal",
+      "label": "Fscore Reversal",
+      "description": "F-Score + Reversal: quality losers outperform junk winners",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2018-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "investment",
+      "label": "Investment",
+      "description": "Investment factor based on asset growth and capital expenditure patterns",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "low_volatility",
+      "label": "Low Volatility",
+      "description": "Low volatility factor: long stable stocks, avoid volatile stocks",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "macro_hedge",
+      "label": "Macro Hedge",
+      "description": "Fortress balance sheet stocks (low debt, high cash, positive CF) for macro protection",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "momentum",
+      "label": "Momentum",
+      "description": "12-1 momentum with downside volatility risk adjustment",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": [
+        {
+          "key": "lookback",
+          "label": "Lookback Days",
+          "type": "int",
+          "default": 252,
+          "min": 21,
+          "max": 756
+        },
+        {
+          "key": "skip",
+          "label": "Skip Days",
+          "type": "int",
+          "default": 21,
+          "min": 0,
+          "max": 252
+        },
+        {
+          "key": "vol_lookback",
+          "label": "Vol Lookback",
+          "type": "int",
+          "default": 252,
+          "min": 21,
+          "max": 756
+        }
+      ]
+    },
+    {
+      "name": "momentum_asset_growth",
+      "label": "Momentum Asset Growth",
+      "description": "Momentum + Asset Growth: momentum winners within high-growth stocks",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2018-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "momentum_reversal_volatility",
+      "label": "Momentum Reversal Volatility",
+      "description": "Combined: momentum (40%) + reversal (30%) + low volatility (30%)",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "pairs_trading",
+      "label": "Pairs Trading",
+      "description": "Pairs trading: mean reversion on correlated stock pairs",
+      "rebalance_frequency": "weekly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "profitability",
+      "label": "Profitability",
+      "description": "Profitability factor based on operating income and gross profit relative to total assets",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": [
+        {
+          "key": "operating_income_weight",
+          "label": "Op Inc Weight",
+          "type": "float",
+          "default": 0.5,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "key": "gross_profit_weight",
+          "label": "Gross Profit Weight",
+          "type": "float",
+          "default": 0.5,
+          "min": 0.0,
+          "max": 1.0
+        }
+      ]
+    },
+    {
+      "name": "quality_momentum",
+      "label": "Quality Momentum",
+      "description": "Momentum + Profitability composite - avoids junk rallies",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "quality_value",
+      "label": "Quality Value",
+      "description": "Value + Profitability composite - avoids value traps",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "residual_momentum",
+      "label": "Residual Momentum",
+      "description": "Residual momentum: market-adjusted stock-specific momentum",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "roa",
+      "label": "Roa",
+      "description": "ROA effect - companies with high return on assets outperform",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "sector_rotation",
+      "label": "Sector Rotation",
+      "description": "Sector rotation: overweight stocks in top-performing sectors",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "short_term_reversal",
+      "label": "Short Term Reversal",
+      "description": "Short-term reversal: long weekly losers, avoid weekly winners",
+      "rebalance_frequency": "weekly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "size_rotation",
+      "label": "Size Rotation",
+      "description": "Adaptive size rotation - tilts to winning size segment (small vs large caps)",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "size_rotation_momentum",
+      "label": "Size Rotation Momentum",
+      "description": "Pure momentum within winning size segment (small vs large caps)",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "size_rotation_quality",
+      "label": "Size Rotation Quality",
+      "description": "Size rotation + momentum + profitability (most sophisticated)",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "sma",
+      "label": "Sma",
+      "description": "10/30 SMA crossover - bullish when short MA > long MA",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "small_cap",
+      "label": "Small Cap",
+      "description": "Pure small cap factor - favors smaller market cap stocks",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "small_cap_momentum",
+      "label": "Small Cap Momentum",
+      "description": "Small cap + Momentum composite - captures discovery plays",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "trend_following",
+      "label": "Trend Following",
+      "description": "Trend following: long stocks at/near all-time highs with momentum",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "trend_value",
+      "label": "Trend Value",
+      "description": "Value stocks filtered by SMA uptrend - avoids value traps",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    },
+    {
+      "name": "value",
+      "label": "Value",
+      "description": "Composite value score from E/P, FCF/P, OCF/EV, S/P, EBITDA/EV ratios",
+      "rebalance_frequency": "quarterly",
+      "timeline": {
+        "start_date": "2017-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": [
+        {
+          "key": "metric_weights.ep",
+          "label": "E/P Weight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 5.0
+        },
+        {
+          "key": "metric_weights.fcfp",
+          "label": "FCF/P Weight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 5.0
+        },
+        {
+          "key": "metric_weights.ocfev",
+          "label": "OCF/EV Weight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 5.0
+        },
+        {
+          "key": "metric_weights.sp",
+          "label": "S/P Weight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 5.0
+        },
+        {
+          "key": "metric_weights.ebitdaev",
+          "label": "EBITDA/EV Weight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 5.0
+        },
+        {
+          "key": "enabled_metrics",
+          "label": "Enabled Metrics",
+          "type": "multi_select",
+          "default": [
+            "ep",
+            "fcfp",
+            "ocfev",
+            "sp",
+            "ebitdaev"
+          ],
+          "options": [
+            {
+              "value": "ep",
+              "label": "E/P"
+            },
+            {
+              "value": "fcfp",
+              "label": "FCF/P"
+            },
+            {
+              "value": "ocfev",
+              "label": "OCF/EV"
+            },
+            {
+              "value": "sp",
+              "label": "S/P"
+            },
+            {
+              "value": "ebitdaev",
+              "label": "EBITDA/EV"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "xu100",
+      "label": "Xu100",
+      "description": "XU100 index with regime awareness - benchmark for risk management value",
+      "rebalance_frequency": "monthly",
+      "timeline": {
+        "start_date": "2014-01-01",
+        "end_date": "2026-12-31"
+      },
+      "parameter_schema": []
+    }
+  ],
+  "default_portfolio_options": {
+    "use_regime_filter": true,
+    "use_vol_targeting": true,
+    "target_downside_vol": 0.2,
+    "vol_lookback": 63,
+    "vol_floor": 0.1,
+    "vol_cap": 1.0,
+    "use_inverse_vol_sizing": true,
+    "inverse_vol_lookback": 60,
+    "max_position_weight": 0.25,
+    "use_stop_loss": true,
+    "stop_loss_threshold": 0.15,
+    "use_liquidity_filter": true,
+    "liquidity_quantile": 0.25,
+    "use_slippage": true,
+    "slippage_bps": 5.0,
+    "use_mcap_slippage": true,
+    "small_cap_slippage_bps": 20.0,
+    "mid_cap_slippage_bps": 10.0,
+    "top_n": 20
+  }
+}

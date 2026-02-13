@@ -2,10 +2,20 @@
     "buildCommand": "npm run build",
     "outputDirectory": ".next",
     "framework": "nextjs",
-    "regions": [
-        "iad1"
+    "regions": ["iad1"],
+    "functions": {
+        "api/index.py": {
+            "runtime": "python3.12",
+            "maxDuration": 300
+        }
+    },
+    "rewrites": [
+        {
+            "source": "/py-api/:path*",
+            "destination": "/api/index.py"
+        }
     ],
     "env": {
-        "NEXT_PUBLIC_APP_URL": "https://quant-ai.vercel.app"
+        "NEXT_PUBLIC_APP_URL": "https://bist-quant-ai.vercel.app"
     }
 }

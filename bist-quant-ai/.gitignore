@@ -39,3 +39,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.yfinance_cache/
+
+# Data cache (keep compressed data, ignore uncompressed)
+data/*.csv
+!data/*.csv.gz
+data/*.parquet.uncompressed

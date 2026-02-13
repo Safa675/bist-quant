@@ -4,6 +4,21 @@ import path from "path";
 const PYTHON_SCRIPT = path.resolve(process.cwd(), "dashboard", "signal_construction_api.py");
 const REMOTE_ENGINE_URL = (process.env.SIGNAL_ENGINE_URL || "").trim();
 
+// Local Python API endpoint (same Vercel deployment)
+const LOCAL_PY_API = "/py-api/api/signal_construction";
+
+function getSignalApiUrl(): string {
+    // Priority: external engine > local Python API
+    if (REMOTE_ENGINE_URL) {
+        return REMOTE_ENGINE_URL;
+    }
+    // Use local Python API on Vercel
+    const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    return `${baseUrl}${LOCAL_PY_API}`;
+}
+
 export interface SignalConstructionPayload {
     universe?: string;
     symbols?: string[] | string;
@@ -85,14 +100,10 @@ function parseJsonFromStdout(stdout: string): Record<string, unknown> {
 }
 
 export async function executeSignalPython(payload: SignalConstructionPayload): Promise<Record<string, unknown>> {
-    if (REMOTE_ENGINE_URL) {
-        return executeRemoteSignalEngine(REMOTE_ENGINE_URL, payload);
-    }
-
-    if (process.env.VERCEL) {
-        throw new Error(
-            "Signal engine is not configured for Vercel runtime. Set SIGNAL_ENGINE_URL to an external Python API."
-        );
+    // On Vercel, always use HTTP API (either remote or local Python function)
+    if (process.env.VERCEL || REMOTE_ENGINE_URL) {
+        const url = getSignalApiUrl();
+        return executeRemoteSignalEngine(url, payload);
     }
 
     return new Promise((resolve, reject) => {

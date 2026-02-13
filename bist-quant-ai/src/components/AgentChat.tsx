@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Target, Shield, Brain, Sparkles } from "lucide-react";
+import { Send, Target, Shield, Brain, Sparkles, Search } from "lucide-react";
 
 interface Signal {
     name: string;
@@ -17,7 +17,7 @@ interface Props {
     regime: string;
 }
 
-type AgentType = "portfolio" | "risk" | "analyst";
+type AgentType = "portfolio" | "risk" | "analyst" | "research";
 
 interface Message {
     role: "user" | "agent";
@@ -47,6 +47,12 @@ const AGENT_CONFIG = {
         color: "#8b5cf6",
         greeting: "I analyze BIST trends, sector rotations, and macro indicators. Ask me about market drivers or sector insights.",
     },
+    research: {
+        name: "Research Analyst",
+        icon: Search,
+        color: "#f59e0b",
+        greeting: "I can screen stocks, fetch financials, and run technical scans using live BIST data. Ask me to find undervalued stocks, check fundamentals, or scan for breakouts.",
+    },
 };
 
 const SAMPLE_QUESTIONS: Record<AgentType, string[]> = {
@@ -64,6 +70,12 @@ const SAMPLE_QUESTIONS: Record<AgentType, string[]> = {
         "What's driving BIST this week?",
         "Which sectors are rotating?",
         "How does USD/TRY affect us?",
+    ],
+    research: [
+        "Find undervalued stocks with P/E < 5",
+        "Show me THYAO's financial ratios",
+        "Scan XU100 for oversold stocks",
+        "Compare banking sector metrics",
     ],
 };
 

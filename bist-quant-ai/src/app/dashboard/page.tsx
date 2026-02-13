@@ -152,9 +152,14 @@ export default function DashboardPage() {
                                 </span>
                             </div>
                         </div>
-                        <Link href="/signal-construction" className="btn-primary" style={{ padding: "10px 16px", fontSize: "0.82rem" }}>
-                            Build Signals
-                        </Link>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <Link href="/factor-lab" style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "9px 14px", fontSize: "0.82rem", color: "var(--text-primary)", textDecoration: "none", background: "var(--bg-secondary)" }}>
+                                Factor Lab
+                            </Link>
+                            <Link href="/signal-construction" className="btn-primary" style={{ padding: "10px 16px", fontSize: "0.82rem" }}>
+                                Build Signals
+                            </Link>
+                        </div>
                     </div>
 
                     {/* ===== STAT CARDS ===== */}
