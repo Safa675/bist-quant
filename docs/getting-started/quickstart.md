@@ -1,69 +1,58 @@
 # Quick Start
 
-This guide walks you through running your first backtest.
+This guide shows a minimal end-to-end backtest flow.
 
-## Prerequisites
-
-1. Install the package: `pip install -e ".[dev]"`
-2. Prepare data files in the `data/` directory:
-   - `bist_prices_full.parquet` or `bist_prices_full.csv`
-   - `xau_try_2013_2026.csv`
-   - `xu100_prices.csv`
-3. Run the regime pipeline to generate `regime_filter/outputs/regime_features.csv`
-
-## Running a Backtest
-
-### Via CLI
-
-```bash
-# Run momentum strategy
-bist-backtest momentum --start-date 2020-01-01 --end-date 2024-12-31
-
-# Run all strategies
-bist-backtest all
-
-# List available signals
-bist-backtest --list-signals
-
-# Dry run (validate inputs)
-bist-backtest momentum --dry-run
-```
-
-### Via Python
+## 1. Build a Portfolio Engine
 
 ```python
-from Models import PortfolioEngine
+from bist_quant import PortfolioEngine
 
-# Initialize engine
-engine = PortfolioEngine(
-    data_dir="data/",
-    regime_model_dir="regime_filter/outputs",
-    start_date="2020-01-01",
-    end_date="2024-12-31",
-)
-
-# Load data
-engine.load_all_data()
-
-# Run single factor
-results = engine.run_factor("momentum")
-
-# Or run all factors
-engine.run_all_factors()
+engine = PortfolioEngine(options={
+    "signal": "momentum",
+    "lookback_period": 21,
+    "holding_period": 5,
+    "top_n": 10,
+    "rebalance_frequency": "weekly",
+})
 ```
 
-## Understanding Results
+## 2. Run a Backtest
 
-Results are saved to `Models/results/<factor_name>/`:
+```python
+result = engine.run_backtest(
+    signals=["momentum"],
+    start_date="2023-01-01",
+    end_date="2023-12-31",
+)
 
-- `summary.txt` - Key metrics (CAGR, Sharpe, max drawdown)
-- `equity_curve.csv` - Daily equity values
-- `returns.csv` - Daily returns
-- `yearly_metrics.csv` - Year-by-year performance
-- `holdings_history.csv` - Position history
+print(f"Sharpe Ratio: {result.metrics.get('sharpe', 0.0):.2f}")
+print(f"Total Return: {result.metrics.get('total_return', 0.0):.2%}")
+print(f"Max Drawdown: {result.metrics.get('max_drawdown', 0.0):.2%}")
+```
+
+## 3. Inspect Results
+
+```python
+print(result.returns.tail())
+print(result.positions.tail())
+print(result.turnover.tail())
+```
+
+## 4. Use the Functional API
+
+```python
+from bist_quant import run_backtest
+
+result = run_backtest(
+    signals=["value"],
+    start_date="2023-01-01",
+    end_date="2023-12-31",
+    top_n=15,
+)
+```
 
 ## Next Steps
 
-- [Signal Configuration](../guide/signals.md) - Customize signal parameters
-- [Portfolio Engine](../guide/portfolio-engine.md) - Advanced engine usage
-- [Examples](../examples/quick-start.md) - More code examples
+- [Signals Guide](../user-guide/signals.md)
+- [Backtesting Guide](../user-guide/backtesting.md)
+- [Examples](../examples/basic-backtest.md)

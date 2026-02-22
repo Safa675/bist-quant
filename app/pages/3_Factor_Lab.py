@@ -21,6 +21,20 @@ st.set_page_config(page_title="Factor Lab · BIST Quant", page_icon="🧪", layo
 
 from app.layout import page_header, render_sidebar  # noqa: E402
 from app.services import get_core_service  # noqa: E402
+from app.ui import (  # noqa: E402
+    ACCENT,
+    BG_ELEVATED,
+    BG_SURFACE,
+    BORDER_DEFAULT,
+    FONT_MONO,
+    FONT_SANS,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    apply_chart_style,
+    badge,
+    metric_row,
+)
 from app.utils import fmt_num, fmt_pct, run_in_thread  # noqa: E402
 
 render_sidebar()
@@ -52,11 +66,11 @@ CATEGORY_MAP: dict[str, list[str]] = {
 }
 
 CATEGORY_COLORS: dict[str, str] = {
-    "Momentum": "#3498db",
-    "Value":    "#2ecc71",
-    "Quality":  "#9b59b6",
-    "Technical":"#f39c12",
-    "Composite":"#e74c3c",
+    "Momentum": ACCENT,
+    "Value":    "#10B981",
+    "Quality":  "#8B5CF6",
+    "Technical":"#F59E0B",
+    "Composite":"#EC4899",
 }
 
 CATEGORY_ICONS: dict[str, str] = {
@@ -81,6 +95,12 @@ def _signal_category(name: str) -> str:
         if name in signals:
             return cat
     return "Composite"
+
+
+def _hex_to_rgb(hex_color: str) -> str:
+    """Convert '#2563EB' → '37,99,235' for use in rgba()."""
+    h = hex_color.lstrip("#")
+    return f"{int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)}"
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -208,11 +228,11 @@ else:
             with cols[col_idx]:
                 with st.container(border=True):
                     st.markdown(
-                        f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:4px;'>"
-                        f"<span style='font-size:1.05rem;font-weight:700;'>{signal_name}</span>"
-                        f"<span style='background:{color};color:#fff;border-radius:10px;"
-                        f"padding:1px 8px;font-size:0.72rem;font-weight:600;'>{icon} {cat}</span>"
-                        f"{'<span style=\"color:#e74c3c;font-size:0.7rem;\">(disabled)</span>' if not enabled else ''}"
+                        f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:6px;'>"
+                        f"<span style='font-size:1rem;font-weight:600;color:{TEXT_PRIMARY};'>{signal_name}</span>"
+                        f"<span class='bq-badge' style='background:rgba({_hex_to_rgb(color)},0.15);"
+                        f"color:{color};'>{icon} {cat}</span>"
+                        f"{'<span class=\"bq-badge bq-badge-danger\">(disabled)</span>' if not enabled else ''}"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
@@ -230,11 +250,10 @@ else:
                     if quick_stats and not quick_stats.get("error"):
                         qm = quick_stats.get("metrics", {})
                         st.markdown(
-                            f"<div style='display:flex;gap:10px;font-size:0.8rem;margin:4px 0;"
-                            f"background:rgba(52,152,219,0.12);border-radius:6px;padding:4px 8px;'>"
-                            f"<span>📈 <b>{fmt_pct(qm.get('cagr', 0) * 100)}</b></span>"
-                            f"<span>⚡ <b>{fmt_num(qm.get('sharpe', 0))}</b></span>"
-                            f"<span>📉 <b>{fmt_pct(qm.get('max_drawdown', 0) * 100)}</b></span>"
+                            f"<div class='bq-stat-row'>"
+                            f"<span>CAGR <b>{fmt_pct(qm.get('cagr', 0) * 100)}</b></span>"
+                            f"<span>Sharpe <b>{fmt_num(qm.get('sharpe', 0))}</b></span>"
+                            f"<span>DD <b>{fmt_pct(qm.get('max_drawdown', 0) * 100)}</b></span>"
                             f"</div>",
                             unsafe_allow_html=True,
                         )
@@ -481,14 +500,15 @@ def _render_combination_results(
     sig_list: list[str],
 ) -> None:
     m = combined.get("metrics", {})
-    st.markdown("### 📊 Combined Portfolio Results")
+    st.markdown("### Combined Portfolio Results")
 
-    mk1, mk2, mk3, mk4, mk5 = st.columns(5)
-    mk1.metric("CAGR", fmt_pct(m.get("cagr", 0) * 100))
-    mk2.metric("Sharpe", fmt_num(m.get("sharpe", 0)))
-    mk3.metric("Sortino", fmt_num(m.get("sortino", 0)))
-    mk4.metric("Max DD", fmt_pct(m.get("max_drawdown", 0) * 100))
-    mk5.metric("Ann. Vol", fmt_pct(m.get("annualized_volatility", 0) * 100))
+    metric_row([
+        {"label": "CAGR", "value": fmt_pct(m.get("cagr", 0) * 100)},
+        {"label": "Sharpe", "value": fmt_num(m.get("sharpe", 0))},
+        {"label": "Sortino", "value": fmt_num(m.get("sortino", 0))},
+        {"label": "Max DD", "value": fmt_pct(m.get("max_drawdown", 0) * 100)},
+        {"label": "Ann. Vol", "value": fmt_pct(m.get("annualized_volatility", 0) * 100)},
+    ])
 
     tab_curve, tab_breakdown, tab_corr = st.tabs(
         ["📈 Equity Curve vs Factors", "🗂 Factor Breakdown", "🔗 Correlations"]
@@ -508,10 +528,10 @@ def _render_combination_results(
                 if not bench.empty:
                     fig.add_trace(go.Scatter(
                         x=bench["date"], y=bench["benchmark"] * 100,
-                        name="XU100", line=dict(color="#7f8c8d", width=1.5, dash="dot"), mode="lines",
+                        name="XU100", line=dict(color=TEXT_MUTED, width=1.5, dash="dot"), mode="lines",
                     ))
 
-            colors_ind = ["#e74c3c", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c", "#e67e22"]
+            colors_ind = ["#EF4444", "#10B981", "#8B5CF6", "#F59E0B", "#06B6D4", "#F97316"]
             for idx_s, sn in enumerate(sig_list):
                 ind_r = individual.get(sn, {})
                 if isinstance(ind_r, dict) and not ind_r.get("error"):
@@ -527,16 +547,13 @@ def _render_combination_results(
 
             fig.add_trace(go.Scatter(
                 x=df_ec["date"], y=df_ec["value"] * 100,
-                name="✦ Combined", line=dict(color="#3498db", width=2.8), mode="lines",
+                name="✦ Combined", line=dict(color=ACCENT, width=2.8), mode="lines",
             ))
+            apply_chart_style(fig, height=430)
             fig.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=20, r=20, t=30, b=20),
-                font=dict(color="#e0e0e0"), legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h"),
-                height=430, yaxis=dict(ticksuffix="x"),
+                legend=dict(orientation="h"),
+                yaxis=dict(ticksuffix="x"),
             )
-            fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
-            fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
             st.plotly_chart(fig, use_container_width=True)
 
     with tab_breakdown:
@@ -576,15 +593,14 @@ def _render_combination_results(
                 ] + [m.get("cagr", 0) * 100]
             except Exception:
                 bar_cagr = [0] * len(rows_bd) + [m.get("cagr", 0) * 100]
-            bar_colors = [CATEGORY_COLORS.get(_signal_category(r["Signal"]), "#7f8c8d") for r in rows_bd] + ["#3498db"]
+            bar_colors = [CATEGORY_COLORS.get(_signal_category(r["Signal"]), TEXT_MUTED) for r in rows_bd] + [ACCENT]
             fig_bar = go.Figure(go.Bar(
                 x=bar_names, y=bar_cagr, marker_color=bar_colors,
                 text=[f"{v:.1f}%" for v in bar_cagr], textposition="auto",
             ))
+            apply_chart_style(fig_bar, height=260)
             fig_bar.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=20, r=20, t=20, b=20),
-                height=260, yaxis=dict(ticksuffix="%", title="CAGR"), showlegend=False,
+                yaxis=dict(ticksuffix="%", title="CAGR"), showlegend=False,
             )
             st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -597,10 +613,7 @@ def _render_combination_results(
                 corr_vals, x=factors_ord, y=factors_ord,
                 color_continuous_scale="RdYlGn", zmin=-1, zmax=1, text_auto=".2f",
             )
-            fig_corr.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=20, r=20, t=20, b=20), height=320,
-            )
+            apply_chart_style(fig_corr, height=320)
             st.plotly_chart(fig_corr, use_container_width=True)
         else:
             st.info("Correlation matrix unavailable for this result.")

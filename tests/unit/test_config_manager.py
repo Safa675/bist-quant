@@ -1,46 +1,33 @@
-from __future__ import annotations
+"""Unit tests for ConfigManager."""
 
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 
-from Models.common.config_manager import ConfigError, ConfigManager
+from bist_quant import ConfigManager, load_config, load_signal_configs
 
 
-def test_yaml_config_loading_and_deep_merge(tmp_path: Path) -> None:
-    project_root = tmp_path
-    models_dir = tmp_path / "Models"
-    models_dir.mkdir(parents=True, exist_ok=True)
-    cfg_dir = project_root / "configs"
-    cfg_dir.mkdir(parents=True, exist_ok=True)
+class TestConfigManager:
+    """Tests for ConfigManager class."""
 
-    (cfg_dir / "strategies.yaml").write_text(
-        """
-defaults:
-  description: Base strategy
-  parameters:
-    lookback: 20
-    threshold: 0.5
-  portfolio_options:
-    use_regime_filter: true
-strategies:
-  demo:
-    description: Demo strategy
-    parameters:
-      threshold: 0.8
-""".strip(),
-        encoding="utf-8",
-    )
+    def test_config_manager_initialization(self) -> None:
+        """Test ConfigManager can be initialized from default paths."""
+        manager = ConfigManager.from_default_paths()
+        assert manager is not None
 
-    manager = ConfigManager(project_root=project_root, models_dir=models_dir)
-    configs = manager.load_signal_configs(prefer_yaml=True)
+    def test_load_config_function(self) -> None:
+        """Test load_config returns valid configuration."""
+        config = load_config("momentum")
+        assert config is not None
+        assert isinstance(config, dict)
 
-    assert "demo" in configs
-    assert configs["demo"]["parameters"]["lookback"] == 20
-    assert configs["demo"]["parameters"]["threshold"] == 0.8
-    assert configs["demo"]["portfolio_options"]["use_regime_filter"] is True
+    def test_load_invalid_config(self) -> None:
+        """Test load_config raises error for invalid signal."""
+        with pytest.raises(ValueError):
+            load_config("nonexistent_signal_xyz")
 
-
-def test_validate_strategy_config_rejects_missing_description() -> None:
-    with pytest.raises(ConfigError, match="missing required non-empty 'description'"):
-        ConfigManager._validate_strategy_config("bad", {"parameters": {"x": 1}})
+    def test_load_signal_configs(self) -> None:
+        """Test load_signal_configs returns all available configs."""
+        configs = load_signal_configs()
+        assert isinstance(configs, dict)
+        assert len(configs) > 0

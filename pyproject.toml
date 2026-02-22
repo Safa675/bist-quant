@@ -1,193 +1,222 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "bist-quant"
-version = "0.1.0"
-description = "BIST quantitative finance research and backtesting library"
+version = "2.0.0"
+description = "Quantitative trading library for BIST"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
-license = {text = "Proprietary"}
-authors = [{name = "BIST Quant Team"}]
-keywords = ["quant", "finance", "backtesting", "bist", "factor-investing"]
-classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Intended Audience :: Financial and Insurance Industry",
-  "Intended Audience :: Science/Research",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Topic :: Office/Business :: Financial :: Investment",
-  "Typing :: Typed",
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "BIST Quant Team", email = "team@bistquant.com"}
 ]
-dependencies = [
-  "numpy>=1.24,<3",
-  "pandas>=2.0,<3",
-  "pyarrow>=14,<21",
-  "openpyxl>=3.1,<4",
-  "scipy>=1.10,<2",
-  "PyYAML>=6.0,<7",
-  "requests>=2.31,<3",
-  "httpx>=0.26,<1",
-  "yfinance>=0.2.40,<1",
+keywords = [
+    "quantitative finance",
+    "backtesting",
+    "portfolio optimization",
+    "BIST",
+    "trading strategies",
+    "factor investing",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 
-[project.urls]
-Homepage = "https://github.com/OWNER/bist-quant"
-Repository = "https://github.com/OWNER/bist-quant.git"
-Documentation = "https://OWNER.github.io/bist-quant/"
-Changelog = "https://github.com/OWNER/bist-quant/blob/main/CHANGELOG.md"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pyarrow>=12.0.0",
+    "pyyaml>=6.0",
+    "python-dateutil>=2.8.0",
+    "tqdm>=4.65.0",
+]
 
 [project.optional-dependencies]
-data-quality = [
-  "pandera>=0.20,<1",
+api = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
 ]
-fetchers = [
-  "borsapy>=0.1",
-  "evds>=0.3",
-  "isyatirimhisse>=0.4",
-  "playwright>=1.46,<2",
+security = [
+    "pyjwt>=2.8.0",
+    "cryptography>=41.0.0",
 ]
-docs = [
-  "mkdocs>=1.6,<2",
-  "mkdocstrings[python]>=0.26,<1",
-  "mkdocs-material>=9.5,<10",
+observability = [
+    "prometheus-client>=0.17.0",
+]
+services = [
+    "psutil>=5.9.0",
+    "aiofiles>=23.0.0",
+]
+multi-asset = [
+    "ccxt>=4.0.0",
+    "yfinance>=0.2.0",
+]
+borsapy = [
+    "borsapy>=1.0.0",
+]
+ml = [
+    "scikit-learn>=1.3.0",
+    "lightgbm>=4.0.0",
+]
+app = [
+    "streamlit>=1.35.0",
+    "plotly>=5.20.0",
 ]
 dev = [
-  "pytest>=8.2,<9",
-  "pytest-cov>=5,<7",
-  "hypothesis>=6.112,<7",
-  "ruff>=0.5.7,<1",
-  "mypy>=1.11,<2",
-  "types-PyYAML>=6.0.12",
-  "types-requests>=2.32.0.20241016",
-  "pre-commit>=3.7,<5",
-  "pip-audit>=2.7,<3",
-  "build>=1.2,<2",
-  # Include docs dependencies in dev
-  "mkdocs>=1.6,<2",
-  "mkdocstrings[python]>=0.26,<1",
-  "mkdocs-material>=9.5,<10",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.0.280",
+    "mypy>=1.4.0",
+]
+full = [
+    "bist-quant[security,observability,services,api,multi-asset,borsapy,ml,app]",
 ]
 
 [project.scripts]
-bist-backtest = "run_backtest:main"
-bist-portfolio-engine = "Models.portfolio_engine:main"
-bist-debug-backtester = "Models.debug_backtester:main"
-bist-benchmark = "Models.common.benchmarking_cli:main"
+bist-quant = "bist_quant.cli:main"
 
-[tool.setuptools]
-include-package-data = true
-py-modules = ["run_backtest"]
+[project.urls]
+Homepage = "https://github.com/Safa675/BIST"
+Documentation = "https://safa675.github.io/BIST"
+Repository = "https://github.com/Safa675/BIST"
+Issues = "https://github.com/Safa675/BIST/issues"
+Changelog = "https://github.com/Safa675/BIST/blob/main/CHANGELOG.md"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["Models*", "common*", "signals*"]
-exclude = ["data*", "scripts*", "regime_filter*", "tests*"]
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/bist_quant",
+]
+exclude = [
+    "/data",
+    "/.git",
+    "/.env",
+    "*.pyc",
+    "__pycache__",
+]
 
-[tool.setuptools.package-data]
-Models = ["py.typed", "configs/*.yaml"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/bist_quant"]
 
-# =============================================================================
-# pytest configuration (migrated from pytest.ini)
-# =============================================================================
 [tool.pytest.ini_options]
-minversion = "8.0"
-addopts = "-ra --strict-markers --strict-config"
 testpaths = ["tests"]
-filterwarnings = [
-  "ignore::FutureWarning:Models.signals.*",
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
-# =============================================================================
-# mypy configuration (migrated from mypy.ini)
-# =============================================================================
-[tool.mypy]
-python_version = "3.10"
-strict = false
-show_error_codes = true
-pretty = true
-warn_unreachable = true
-ignore_missing_imports = true
-follow_imports = "silent"
-exclude = '''(?x)(
-  ^data/
-  | ^Models/results/
-  | ^regime_filter/
-)'''
-files = [
-  "Models/common/*.py",
-  "Models/signals/factory.py",
-  "Models/signals/protocol.py",
-  "Models/__init__.py",
-  "Models/signals/__init__.py",
+[tool.coverage.run]
+source = ["src/bist_quant"]
+branch = true
+omit = [
+    "src/bist_quant/__init__.py",
+    "src/bist_quant/tests/*",
+    "src/bist_quant/**/test_*.py",
+    "src/bist_quant/analytics/*",
+    "src/bist_quant/backtesting.py",
+    "src/bist_quant/cli.py",
+    "src/bist_quant/common/backtest_services.py",
+    "src/bist_quant/common/backtester.py",
+    "src/bist_quant/common/benchmarking.py",
+    "src/bist_quant/common/benchmarking_cli.py",
+    "src/bist_quant/common/borsapy_adapter.py",
+    "src/bist_quant/common/crypto_client.py",
+    "src/bist_quant/common/data_loader.py",
+    "src/bist_quant/common/data_manager.py",
+    "src/bist_quant/common/data_paths.py",
+    "src/bist_quant/common/enums.py",
+    "src/bist_quant/common/fund_analyzer.py",
+    "src/bist_quant/common/fx_commodities_client.py",
+    "src/bist_quant/common/macro_adapter.py",
+    "src/bist_quant/common/market_cap_utils.py",
+    "src/bist_quant/common/panel_cache.py",
+    "src/bist_quant/common/portfolio_analytics.py",
+    "src/bist_quant/common/report_generator.py",
+    "src/bist_quant/common/staleness.py",
+    "src/bist_quant/common/us_stock_client.py",
+    "src/bist_quant/common/utils.py",
+    "src/bist_quant/configs/__init__.py",
+    "src/bist_quant/configs/_template.py",
+    "src/bist_quant/data_pipeline/*",
+    "src/bist_quant/engines/*",
+    "src/bist_quant/jobs.py",
+    "src/bist_quant/optimization.py",
+    "src/bist_quant/portfolio.py",
+    "src/bist_quant/portfolio_engine.py",
+    "src/bist_quant/regime/*",
+    "src/bist_quant/runtime.py",
+    "src/bist_quant/services/*",
+    "src/bist_quant/signals/__init__.py",
+    "src/bist_quant/signals/_context.py",
+    "src/bist_quant/signals/axis_cache.py",
+    "src/bist_quant/signals/borsapy_indicators.py",
+    "src/bist_quant/signals/composite.py",
+    "src/bist_quant/signals/debug_utils.py",
+    "src/bist_quant/signals/factor_axes.py",
+    "src/bist_quant/signals/factor_builders.py",
+    "src/bist_quant/signals/five_factor_pipeline.py",
+    "src/bist_quant/signals/momentum.py",
+    "src/bist_quant/signals/orthogonalization.py",
+    "src/bist_quant/signals/protocol.py",
+    "src/bist_quant/signals/quality.py",
+    "src/bist_quant/signals/technical.py",
+    "src/bist_quant/signals/value.py",
+    "src/bist_quant/signals/standalone_factors/*",
+    "src/bist_quant/signals/*_signals.py",
 ]
 
-[[tool.mypy.overrides]]
-module = "Models.portfolio_engine"
-strict = false
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+fail_under = 50
 
-[[tool.mypy.overrides]]
-module = "Models.common.*"
-strict = false
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "Models.signals.*"
-strict = false
-
-[[tool.mypy.overrides]]
-module = "Models.common.borsapy_adapter"
-strict = true
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "Models.common.macro_adapter"
-strict = true
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "Models.common.portfolio_analytics"
-strict = true
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "Models.common.market_cap_utils"
-strict = true
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "Models.common.enums"
-strict = true
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "Models.signals.factory"
-strict = true
-
-[[tool.mypy.overrides]]
-module = "Models.signals.protocol"
-strict = true
-
-# =============================================================================
-# ruff configuration (migrated from .ruff.toml)
-# =============================================================================
-[tool.ruff]
-target-version = "py310"
+[tool.black]
 line-length = 100
-src = ["Models", "tests", "."]
-extend-exclude = [
-  "Models/results",
-  "data",
-  "__pycache__",
-]
+target-version = ["py310", "py311", "py312"]
+include = '''
+/(
+    src/bist_quant/portfolio\.py
+  | src/bist_quant/common/(backtester|config_manager|data_loader|risk_manager)\.py
+  | src/bist_quant/signals/factory\.py
+)$
+'''
+
+[tool.ruff]
+line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
-ignore = ["E501"]
+select = ["E", "F", "W", "I", "N"]
+ignore = ["E501", "F401", "F403", "F541", "F841", "I001", "N806", "N999", "W291", "W293"]
 
-[tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["bist_quant.*"]
+ignore_errors = true

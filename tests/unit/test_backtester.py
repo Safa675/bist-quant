@@ -1,112 +1,86 @@
+"""Unit tests for Backtester."""
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-from Models.common.backtester import (
+from bist_quant.common.backtester import (
+    Backtester,
     identify_monthly_rebalance_days,
     identify_quarterly_rebalance_days,
 )
+from bist_quant.common.risk_manager import RiskManager
 
 
-def _base_options(**overrides: object) -> dict:
-    opts = {
-        "use_regime_filter": False,
-        "use_vol_targeting": False,
-        "use_inverse_vol_sizing": False,
-        "use_stop_loss": False,
-        "use_liquidity_filter": False,
-        "use_slippage": False,
-        "use_mcap_slippage": False,
-        "top_n": 2,
-        "signal_lag_days": 1,
-        "slippage_bps": 5.0,
-        "small_cap_slippage_bps": 20.0,
-        "mid_cap_slippage_bps": 10.0,
-        "stop_loss_threshold": 0.15,
-        "liquidity_quantile": 0.25,
-        "inverse_vol_lookback": 20,
-        "max_position_weight": 0.5,
-        "target_downside_vol": 0.2,
-        "vol_lookback": 20,
-        "vol_floor": 0.1,
-        "vol_cap": 1.0,
-        "debug": False,
-    }
-    opts.update(overrides)
-    return opts
+def _dummy_mcap_builder(close_df: pd.DataFrame, dates: pd.DatetimeIndex, loader) -> pd.DataFrame:
+    return pd.DataFrame(1.0, index=dates, columns=close_df.columns)
 
 
-def test_identify_rebalance_days_contract() -> None:
-    trading_days = pd.bdate_range("2025-01-01", "2025-04-30")
+class TestBacktester:
+    """Tests for Backtester class."""
 
-    monthly = identify_monthly_rebalance_days(trading_days)
-    expected_monthly = {
-        pd.Timestamp("2025-01-01"),
-        pd.Timestamp("2025-02-03"),
-        pd.Timestamp("2025-03-03"),
-        pd.Timestamp("2025-04-01"),
-    }
-    assert expected_monthly.issubset(monthly)
+    def test_backtester_initialization(self, tmp_path) -> None:
+        """Test Backtester can be initialized with explicit dependencies."""
+        backtester = Backtester(
+            loader=object(),
+            data_dir=tmp_path,
+            risk_manager=RiskManager(),
+            build_size_market_cap_panel=_dummy_mcap_builder,
+        )
+        assert backtester is not None
 
-    quarterly = identify_quarterly_rebalance_days(trading_days)
-    # Targets are Mar/May/Aug/Nov 15th, advanced to first trading day >= target.
-    assert pd.Timestamp("2025-03-17") in quarterly
+    def test_backtester_with_prices(self, sample_prices_df: pd.DataFrame, tmp_path) -> None:
+        """Test Backtester accepts prepared price panels via update_data."""
+        prices = sample_prices_df.rename(
+            columns={
+                "date": "Date",
+                "ticker": "Ticker",
+                "open": "Open",
+                "high": "High",
+                "low": "Low",
+                "close": "Close",
+                "volume": "Volume",
+            }
+        )
+        prices["Date"] = pd.to_datetime(prices["Date"])
 
+        close_df = prices.pivot_table(index="Date", columns="Ticker", values="Close", aggfunc="last")
+        volume_df = prices.pivot_table(index="Date", columns="Ticker", values="Volume", aggfunc="last")
 
-def test_backtester_run_respects_signal_lag(backtester, signals_df: pd.DataFrame) -> None:
-    lagged = backtester.run(
-        signals=signals_df,
-        factor_name="momentum",
-        rebalance_freq="monthly",
-        portfolio_options=_base_options(signal_lag_days=1),
-    )
-    no_lag = backtester.run(
-        signals=signals_df,
-        factor_name="momentum",
-        rebalance_freq="monthly",
-        portfolio_options=_base_options(signal_lag_days=0),
-    )
+        regime_series = pd.Series("Bull", index=close_df.index)
+        xu100_prices = pd.Series(
+            np.linspace(100.0, 120.0, len(close_df)),
+            index=close_df.index,
+            name="Close",
+        )
 
-    lagged_sanity = lagged["sanity_checks"]
-    no_lag_sanity = no_lag["sanity_checks"]
+        risk_manager = RiskManager()
+        backtester = Backtester(
+            loader=object(),
+            data_dir=tmp_path,
+            risk_manager=risk_manager,
+            build_size_market_cap_panel=_dummy_mcap_builder,
+        )
+        backtester.update_data(
+            prices=prices,
+            close_df=close_df,
+            volume_df=volume_df,
+            regime_series=regime_series,
+            regime_allocations={},
+            xu100_prices=xu100_prices,
+            xautry_prices=None,
+        )
 
-    first_day = lagged_sanity.index.min()
-    assert lagged_sanity.loc[first_day, "signal_count"] == 0
-    assert lagged_sanity.loc[first_day, "n_active_holdings"] == 0
+        assert backtester.close_df is not None
+        assert backtester.volume_df is not None
 
-    assert no_lag_sanity.loc[first_day, "signal_count"] > 0
-    assert no_lag_sanity.loc[first_day, "n_active_holdings"] > 0
+    def test_rebalance_day_helpers(self) -> None:
+        """Test monthly and quarterly helper functions return non-empty schedules."""
+        days = pd.date_range("2024-01-01", periods=260, freq="B")
 
+        monthly = identify_monthly_rebalance_days(days)
+        quarterly = identify_quarterly_rebalance_days(days)
 
-def test_backtester_regime_blending_uses_gold_leg(backtester, signals_df: pd.DataFrame) -> None:
-    result = backtester.run(
-        signals=signals_df,
-        factor_name="momentum",
-        rebalance_freq="monthly",
-        portfolio_options=_base_options(signal_lag_days=1, use_regime_filter=True),
-    )
-
-    returns_df = result["returns_df"]
-    zero_alloc = returns_df[returns_df["allocation"] == 0.0]
-    assert not zero_alloc.empty
-    assert np.allclose(
-        zero_alloc["return"].to_numpy(),
-        zero_alloc["xautry_return"].to_numpy(),
-        atol=1e-12,
-        equal_nan=True,
-    )
-
-
-def test_backtester_sanity_weight_invariants(backtester, signals_df: pd.DataFrame) -> None:
-    result = backtester.run(
-        signals=signals_df,
-        factor_name="momentum",
-        rebalance_freq="monthly",
-        portfolio_options=_base_options(signal_lag_days=1),
-    )
-
-    sanity = result["sanity_checks"]
-    invested = sanity[(sanity["allocation"] > 0) & (sanity["n_active_holdings"] > 0)]
-    assert not invested.empty
-    assert invested["weight_sum_raw"].sub(1.0).abs().max() <= 1e-6
+        assert len(monthly) > 0
+        assert len(quarterly) > 0

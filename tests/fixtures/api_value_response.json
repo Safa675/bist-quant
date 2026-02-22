@@ -1,8 +1,0 @@
-{
-  "value": [
-    {"itemCode": "1A", "itemDescTr": "Toplam Varlıklar", "value1": "100", "value2": "90", "value3": "85", "value4": "80", "value5": "78"},
-    {"itemCode": "2A", "itemDescTr": "Özkaynaklar", "value1": "55", "value2": "50", "value3": "48", "value4": "46", "value5": "44"},
-    {"itemCode": "3A", "itemDescTr": "Satış Gelirleri", "value1": "45", "value2": "43", "value3": "42", "value4": "40", "value5": "39"},
-    {"itemCode": "3B", "itemDescTr": "DÖNEM KARI (ZARARI)", "value1": "8", "value2": "7", "value3": "7", "value4": "6", "value5": "6"}
-  ]
-}

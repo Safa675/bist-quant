@@ -18,6 +18,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from app.ui import (
+    ACCENT, BG_SURFACE, BORDER_DEFAULT, DANGER, FONT_MONO, FONT_SANS,
+    SUCCESS, TEXT_MUTED, TEXT_SECONDARY, WARNING,
+    apply_chart_style, empty_state, metric_row,
+)
+
 st.set_page_config(
     page_title="Stock Screener · BIST Quant", page_icon="🔍", layout="wide"
 )
@@ -60,7 +66,7 @@ SECTOR_ICONS: dict[str, str] = {
     "İDARİ VE DESTEK HİZMET FAALİYETLERİ": "📋",
 }
 
-REC_COLORS = {"AL": "#2ecc71", "TUT": "#f39c12", "SAT": "#e74c3c"}
+REC_COLORS = {"AL": SUCCESS, "TUT": WARNING, "SAT": DANGER}
 REC_ICONS  = {"AL": "📈", "TUT": "⏸", "SAT": "📉"}
 
 TEMPLATE_LABELS: dict[str, str] = {
@@ -238,7 +244,7 @@ def _build_spark_fig(
         if not prices:
             continue
         ret = ret_1m_map.get(sym, 0.0)
-        color = "#2ecc71" if ret >= 0 else "#e74c3c"
+        color = SUCCESS if ret >= 0 else DANGER
         norm = [p / prices[0] * 100 if prices[0] else p for p in prices]
         fig.add_trace(
             go.Scatter(
@@ -252,17 +258,14 @@ def _build_spark_fig(
             row=row,
             col=col,
         )
+    spark_height = max(160, n_rows * 130)
+    apply_chart_style(fig, height=spark_height)
     fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=5, r=5, t=30, b=5),
-        height=max(160, n_rows * 130),
         showlegend=False,
-        font=dict(color="#e0e0e0", size=9),
     )
     for ann in fig.layout.annotations:
-        ann.update(font=dict(size=9, color="#aaa"))
+        ann.update(font=dict(size=9, color=TEXT_SECONDARY))
     fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
     fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
     return fig
@@ -310,102 +313,101 @@ filter_col, result_col = st.columns([1, 3], gap="large")
 # LEFT: FILTER PANEL
 # ─────────────────────────────────────────────────────────────────────────────
 with filter_col:
-    st.markdown("### ⚙️ Screener Filters")
+    with st.container(border=True):
+        st.markdown("### Screener Filters")
 
-    # Universe
-    sel_index = st.selectbox(
-        "📦 Universe",
-        options=INDEX_OPTIONS,
-        index=INDEX_OPTIONS.index(_val("sc5_index")),
-        key="sc5_index_sel",
-    )
-    st.session_state["sc5_index"] = sel_index
-
-    # Sector multi-select
-    sel_sectors = st.multiselect(
-        "🏭 Sectors",
-        options=SECTORS,
-        default=_val("sc5_sectors"),
-        placeholder="All sectors",
-        format_func=lambda s: f"{SECTOR_ICONS.get(s, '•')} {s}",
-        key="sc5_sec_ms",
-    )
-    st.session_state["sc5_sectors"] = sel_sectors
-
-    # Template presets
-    st.markdown("**⚡ Quick Presets**")
-    preset_cols = st.columns(2)
-    for i, (tkey, tlabel) in enumerate(TEMPLATE_LABELS.items()):
-        with preset_cols[i % 2]:
-            active = _val("sc5_template") == tkey
-            btn_style = "primary" if active else "secondary"
-            if st.button(tlabel, key=f"sc5_tpl_{tkey}", type=btn_style, use_container_width=True):
-                st.session_state["sc5_template"] = "" if active else tkey
-                st.rerun()
-
-    st.markdown("---")
-    st.markdown("**📊 Fundamental Filters**")
-
-    with st.expander("📈 Valuation", expanded=True):
-        c1, c2 = st.columns(2)
-        pe_min = c1.number_input("P/E min", value=float(_val("sc5_pe_min")), min_value=0.0, max_value=500.0, step=1.0, key="sc5_pe_min_in", help="0 = no lower bound")
-        pe_max = c2.number_input("P/E max", value=float(_val("sc5_pe_max")), min_value=0.0, max_value=5000.0, step=1.0, key="sc5_pe_max_in", help="0 = no upper bound")
-        st.session_state["sc5_pe_min"] = pe_min
-        st.session_state["sc5_pe_max"] = pe_max
-        c3, c4 = st.columns(2)
-        mcap_min = c3.number_input("MCap USD mn min", value=float(_val("sc5_mcap_min")), min_value=0.0, max_value=1e6, step=100.0, key="sc5_mcap_min_in")
-        mcap_max = c4.number_input("MCap USD mn max", value=float(_val("sc5_mcap_max")), min_value=0.0, max_value=1e6, step=100.0, key="sc5_mcap_max_in")
-        st.session_state["sc5_mcap_min"] = mcap_min
-        st.session_state["sc5_mcap_max"] = mcap_max
-        div_min = st.number_input("Dividend Yield min (%)", value=float(_val("sc5_div_min")), min_value=0.0, max_value=100.0, step=0.5, key="sc5_div_min_in")
-        st.session_state["sc5_div_min"] = div_min
-
-    with st.expander("⭐ Quality", expanded=True):
-        c5, c6 = st.columns(2)
-        roe_min = c5.number_input("ROE min (%)", value=float(_val("sc5_roe_min")), min_value=-200.0, max_value=500.0, step=1.0, key="sc5_roe_min_in")
-        roe_max = c6.number_input("ROE max (%)", value=float(_val("sc5_roe_max")), min_value=0.0, max_value=1000.0, step=1.0, key="sc5_roe_max_in")
-        st.session_state["sc5_roe_min"] = roe_min
-        st.session_state["sc5_roe_max"] = roe_max
-        c7, c8 = st.columns(2)
-        nm_min = c7.number_input("Net Margin min (%)", value=float(_val("sc5_nm_min")), min_value=-500.0, max_value=200.0, step=1.0, key="sc5_nm_min_in")
-        nm_max = c8.number_input("Net Margin max (%)", value=float(_val("sc5_nm_max")), min_value=0.0, max_value=1000.0, step=1.0, key="sc5_nm_max_in")
-        st.session_state["sc5_nm_min"] = nm_min
-        st.session_state["sc5_nm_max"] = nm_max
-
-    with st.expander("📉 Technical  / Momentum", expanded=False):
-        rsi_min = st.slider("RSI 14 range", 0.0, 100.0, (_val("sc5_rsi_min"), _val("sc5_rsi_max")), step=1.0, key="sc5_rsi_slider")
-        st.session_state["sc5_rsi_min"] = float(rsi_min[0])
-        st.session_state["sc5_rsi_max"] = float(rsi_min[1])
-        r1m = st.slider("Return 1M range (%)", -50.0, 50.0, (_val("sc5_ret1m_min"), _val("sc5_ret1m_max")), step=0.5, key="sc5_r1m_slider")
-        st.session_state["sc5_ret1m_min"] = float(r1m[0])
-        st.session_state["sc5_ret1m_max"] = float(r1m[1])
-
-    with st.expander("📋 Recommendation", expanded=False):
-        rec_sel = st.multiselect(
-            "Analyst rating",
-            options=["AL", "TUT", "SAT"],
-            default=_val("sc5_rec_filter"),
-            format_func=lambda r: f"{REC_ICONS.get(r, '')} {r}",
-            key="sc5_rec_ms",
+        # Universe
+        sel_index = st.selectbox(
+            "📦 Universe",
+            options=INDEX_OPTIONS,
+            index=INDEX_OPTIONS.index(_val("sc5_index")),
+            key="sc5_index_sel",
         )
-        st.session_state["sc5_rec_filter"] = rec_sel
+        st.session_state["sc5_index"] = sel_index
 
-    st.markdown("---")
-    st.markdown("**🔢 Sort**")
-    sort_labels = [lbl for _, lbl in SORT_FIELD_OPTIONS]
-    sort_keys  = [key for key, _ in SORT_FIELD_OPTIONS]
-    cur_sort_idx = sort_keys.index(_val("sc5_sort_col")) if _val("sc5_sort_col") in sort_keys else 0
-    sel_sort = st.selectbox("Sort by", options=sort_labels, index=cur_sort_idx, key="sc5_sort_sel")
-    st.session_state["sc5_sort_col"] = sort_keys[sort_labels.index(sel_sort)]
-    sort_dir = st.radio("Order", ["Descending ↓", "Ascending ↑"], horizontal=True, key="sc5_sort_dir")
-    st.session_state["sc5_sort_desc"] = sort_dir.startswith("Desc")
+        # Sector multi-select
+        sel_sectors = st.multiselect(
+            "🏭 Sectors",
+            options=SECTORS,
+            default=_val("sc5_sectors"),
+            placeholder="All sectors",
+            format_func=lambda s: f"{SECTOR_ICONS.get(s, '•')} {s}",
+            key="sc5_sec_ms",
+        )
+        st.session_state["sc5_sectors"] = sel_sectors
 
-    st.markdown("---")
-    run_btn = st.button("▶ Run Screener", type="primary", use_container_width=True, key="sc5_run")
-    if st.button("🔄 Clear Filters", use_container_width=True, key="sc5_clear"):
-        for k, v in _SS_DEFAULTS.items():
-            st.session_state[k] = v
-        st.rerun()
+        # Template presets
+        st.markdown("**Quick Presets**")
+        preset_cols = st.columns(2)
+        for i, (tkey, tlabel) in enumerate(TEMPLATE_LABELS.items()):
+            with preset_cols[i % 2]:
+                active = _val("sc5_template") == tkey
+                btn_style = "primary" if active else "secondary"
+                if st.button(tlabel, key=f"sc5_tpl_{tkey}", type=btn_style, use_container_width=True):
+                    st.session_state["sc5_template"] = "" if active else tkey
+                    st.rerun()
+
+        st.markdown("**Fundamental Filters**")
+
+        with st.expander("📈 Valuation", expanded=True):
+            c1, c2 = st.columns(2)
+            pe_min = c1.number_input("P/E min", value=float(_val("sc5_pe_min")), min_value=0.0, max_value=500.0, step=1.0, key="sc5_pe_min_in", help="0 = no lower bound")
+            pe_max = c2.number_input("P/E max", value=float(_val("sc5_pe_max")), min_value=0.0, max_value=5000.0, step=1.0, key="sc5_pe_max_in", help="0 = no upper bound")
+            st.session_state["sc5_pe_min"] = pe_min
+            st.session_state["sc5_pe_max"] = pe_max
+            c3, c4 = st.columns(2)
+            mcap_min = c3.number_input("MCap USD mn min", value=float(_val("sc5_mcap_min")), min_value=0.0, max_value=1e6, step=100.0, key="sc5_mcap_min_in")
+            mcap_max = c4.number_input("MCap USD mn max", value=float(_val("sc5_mcap_max")), min_value=0.0, max_value=1e6, step=100.0, key="sc5_mcap_max_in")
+            st.session_state["sc5_mcap_min"] = mcap_min
+            st.session_state["sc5_mcap_max"] = mcap_max
+            div_min = st.number_input("Dividend Yield min (%)", value=float(_val("sc5_div_min")), min_value=0.0, max_value=100.0, step=0.5, key="sc5_div_min_in")
+            st.session_state["sc5_div_min"] = div_min
+
+        with st.expander("⭐ Quality", expanded=True):
+            c5, c6 = st.columns(2)
+            roe_min = c5.number_input("ROE min (%)", value=float(_val("sc5_roe_min")), min_value=-200.0, max_value=500.0, step=1.0, key="sc5_roe_min_in")
+            roe_max = c6.number_input("ROE max (%)", value=float(_val("sc5_roe_max")), min_value=0.0, max_value=1000.0, step=1.0, key="sc5_roe_max_in")
+            st.session_state["sc5_roe_min"] = roe_min
+            st.session_state["sc5_roe_max"] = roe_max
+            c7, c8 = st.columns(2)
+            nm_min = c7.number_input("Net Margin min (%)", value=float(_val("sc5_nm_min")), min_value=-500.0, max_value=200.0, step=1.0, key="sc5_nm_min_in")
+            nm_max = c8.number_input("Net Margin max (%)", value=float(_val("sc5_nm_max")), min_value=0.0, max_value=1000.0, step=1.0, key="sc5_nm_max_in")
+            st.session_state["sc5_nm_min"] = nm_min
+            st.session_state["sc5_nm_max"] = nm_max
+
+        with st.expander("📉 Technical  / Momentum", expanded=False):
+            rsi_min = st.slider("RSI 14 range", 0.0, 100.0, (_val("sc5_rsi_min"), _val("sc5_rsi_max")), step=1.0, key="sc5_rsi_slider")
+            st.session_state["sc5_rsi_min"] = float(rsi_min[0])
+            st.session_state["sc5_rsi_max"] = float(rsi_min[1])
+            r1m = st.slider("Return 1M range (%)", -50.0, 50.0, (_val("sc5_ret1m_min"), _val("sc5_ret1m_max")), step=0.5, key="sc5_r1m_slider")
+            st.session_state["sc5_ret1m_min"] = float(r1m[0])
+            st.session_state["sc5_ret1m_max"] = float(r1m[1])
+
+        with st.expander("📋 Recommendation", expanded=False):
+            rec_sel = st.multiselect(
+                "Analyst rating",
+                options=["AL", "TUT", "SAT"],
+                default=_val("sc5_rec_filter"),
+                format_func=lambda r: f"{REC_ICONS.get(r, '')} {r}",
+                key="sc5_rec_ms",
+            )
+            st.session_state["sc5_rec_filter"] = rec_sel
+
+        st.markdown("**Sort**")
+        sort_labels = [lbl for _, lbl in SORT_FIELD_OPTIONS]
+        sort_keys  = [key for key, _ in SORT_FIELD_OPTIONS]
+        cur_sort_idx = sort_keys.index(_val("sc5_sort_col")) if _val("sc5_sort_col") in sort_keys else 0
+        sel_sort = st.selectbox("Sort by", options=sort_labels, index=cur_sort_idx, key="sc5_sort_sel")
+        st.session_state["sc5_sort_col"] = sort_keys[sort_labels.index(sel_sort)]
+        sort_dir = st.radio("Order", ["Descending ↓", "Ascending ↑"], horizontal=True, key="sc5_sort_dir")
+        st.session_state["sc5_sort_desc"] = sort_dir.startswith("Desc")
+
+        st.markdown("")
+        run_btn = st.button("Run Screener", type="primary", use_container_width=True, key="sc5_run")
+        if st.button("Clear Filters", use_container_width=True, key="sc5_clear"):
+            for k, v in _SS_DEFAULTS.items():
+                st.session_state[k] = v
+            st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -461,21 +463,23 @@ with result_col:
 
     # ── Welcome / placeholder ────────────────────────────────────────────────
     if raw_result is None and not err:
-        st.markdown("### 📊 Configure filters and click **▶ Run Screener**")
-        with st.container(border=True):
-            ic1, ic2, ic3, ic4 = st.columns(4)
-            ic1.metric("Universe", "XU100", help="604 stocks in BIST All-Share")
-            ic2.metric("Sectors", str(len(SECTORS)), help="Available sector filters")
-            ic3.metric("Filter Fields", "29", help="Fundamental + technical + flow metrics")
-            ic4.metric("Presets", str(len(TEMPLATE_LABELS)), help="Quick-start templates")
-
-        st.markdown("**Available columns:** ticker · sector · P/E · P/B · ROE · Net Margin · Market Cap · Dividend Yield · RSI · Return 1M/1Y · Analyst Rating · Sparkline")
-        with st.expander("💡 Usage tips"):
+        metric_row([
+            {"label": "Universe", "value": "XU100"},
+            {"label": "Sectors", "value": str(len(SECTORS))},
+            {"label": "Filter Fields", "value": "29"},
+            {"label": "Presets", "value": str(len(TEMPLATE_LABELS))},
+        ])
+        empty_state(
+            icon="🔍",
+            title="Configure filters and run the screener",
+            hint="Set your filters in the left panel, then click Run Screener to scan the BIST universe.",
+        )
+        with st.expander("Usage tips"):
             st.markdown("""
-- **Run Screener** loads price data and computes fundamentals from local CSV/Parquet files. First run takes ~5–15 seconds; subsequent runs use the in-memory cache (valid for 10 min).
-- **Presets** auto-populate filter bounds (e.g. "Low P/E" sets `pe.max = 12`). Combine presets with custom sliders.
+- **Run Screener** loads price data and computes fundamentals from local CSV/Parquet files. First run takes ~5–15 s; subsequent runs use the in-memory cache (valid for 10 min).
+- **Presets** auto-populate filter bounds (e.g. “Low P/E” sets `pe.max = 12`). Combine presets with custom sliders.
 - **Sector filter** is applied client-side after the engine run — instant, no re-fetch needed.
-- **Watchlist**: tick the checkbox next to any row to add the ticker to `st.session_state["sc5_watchlist"]`.
+- **Watchlist**: tick the checkbox next to any row to add the ticker to your watchlist.
 - **Sparklines** show the 30-day normalised price trend for the top 20 results.
             """)
 
@@ -500,12 +504,13 @@ with result_col:
         page_size = int(_val("sc5_page_size"))
 
         # ── summary bar ──────────────────────────────────────────────────────
-        sm1, sm2, sm3, sm4, sm5 = st.columns(5)
-        sm1.metric("Total engine matches", meta.get("total_matches", "–"))
-        sm2.metric("After filters", total_view)
-        sm3.metric("As-of", str(meta.get("as_of", "–"))[:10])
-        sm4.metric("Data source", meta.get("data_source", "local").capitalize())
-        sm5.metric("Time", f"{meta.get('execution_ms', '–')} ms")
+        metric_row([
+            {"label": "Engine Matches", "value": str(meta.get("total_matches", "–"))},
+            {"label": "After Filters", "value": str(total_view)},
+            {"label": "As-of", "value": str(meta.get("as_of", "–"))[:10]},
+            {"label": "Data Source", "value": meta.get("data_source", "local").capitalize()},
+            {"label": "Execution", "value": f"{meta.get('execution_ms', '–')} ms"},
+        ])
 
         # applied filters chips
         if applied_filters:
@@ -520,25 +525,13 @@ with result_col:
         # ── rec distribution badges ───────────────────────────────────────────
         if "recommendation" in df_view.columns:
             rec_counts = df_view["recommendation"].fillna("–").value_counts()
-            bd1, bd2, bd3, bd4 = st.columns(4)
-            bd1.markdown(
-                f"<div style='background:#27ae60;border-radius:6px;padding:6px 12px;text-align:center;'>"
-                f"📈 <b>AL</b> {rec_counts.get('AL', 0)}</div>", unsafe_allow_html=True
-            )
-            bd2.markdown(
-                f"<div style='background:#e67e22;border-radius:6px;padding:6px 12px;text-align:center;'>"
-                f"⏸ <b>TUT</b> {rec_counts.get('TUT', 0)}</div>", unsafe_allow_html=True
-            )
-            bd3.markdown(
-                f"<div style='background:#c0392b;border-radius:6px;padding:6px 12px;text-align:center;'>"
-                f"📉 <b>SAT</b> {rec_counts.get('SAT', 0)}</div>", unsafe_allow_html=True
-            )
-            bd4.markdown(
-                f"<div style='background:#2c3e50;border-radius:6px;padding:6px 12px;text-align:center;'>"
-                f"❓ <b>N/A</b> {rec_counts.get('–', 0) + rec_counts.get('nan', 0) + (total_view - rec_counts.sum())}</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown("")
+            na_count = rec_counts.get("–", 0) + rec_counts.get("nan", 0) + (total_view - rec_counts.sum())
+            metric_row([
+                {"label": "AL (Buy)",  "value": str(rec_counts.get("AL", 0)),  "color": SUCCESS},
+                {"label": "TUT (Hold)","value": str(rec_counts.get("TUT", 0)), "color": WARNING},
+                {"label": "SAT (Sell)","value": str(rec_counts.get("SAT", 0)), "color": DANGER},
+                {"label": "N/A",       "value": str(na_count),                 "color": TEXT_MUTED},
+            ])
 
         # ── pagination controls ─────────────────────────────────────────────
         total_pages = max(1, (total_view + page_size - 1) // page_size)
@@ -563,25 +556,25 @@ with result_col:
 
         # Colour map: recommendation text colour
         def _color_rec(val: str) -> str:
-            return f"color: {REC_COLORS.get(str(val).upper(), '#aaa')}; font-weight: bold"
+            return f"color: {REC_COLORS.get(str(val).upper(), TEXT_MUTED)}; font-weight: bold"
 
         def _color_rsi(val: float) -> str:
             try:
                 v = float(val)
-                if v > 70:  return "color: #e74c3c"
-                if v < 30:  return "color: #2ecc71"
+                if v > 70:  return f"color: {DANGER}"
+                if v < 30:  return f"color: {SUCCESS}"
             except Exception:
                 pass
-            return "color: #e0e0e0"
+            return f"color: {TEXT_SECONDARY}"
 
         def _color_ret(val: float) -> str:
             try:
                 v = float(val)
-                if v >  5:  return "color: #2ecc71"
-                if v < -5:  return "color: #e74c3c"
+                if v >  5:  return f"color: {SUCCESS}"
+                if v < -5:  return f"color: {DANGER}"
             except Exception:
                 pass
-            return "color: #e0e0e0"
+            return f"color: {TEXT_SECONDARY}"
 
         styled = disp_df.style
         if "recommendation" in disp_df.columns:
@@ -616,7 +609,7 @@ with result_col:
         )
 
         # ── watchlist buttons ────────────────────────────────────────────────
-        st.markdown("---")
+
         wl_expander = st.expander(
             f"⭐ Watchlist ({len(_val('sc5_watchlist'))} stocks)", expanded=len(_val("sc5_watchlist")) > 0
         )
@@ -691,11 +684,10 @@ with result_col:
                         for i in range(len(sector_counts))
                     ]),
                 ))
+                apply_chart_style(fig_sec, height=320)
                 fig_sec.update_layout(
-                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=10, r=10, t=20, b=10), height=320,
+                    margin=dict(l=10, r=10, t=20, b=10),
                     showlegend=True, legend=dict(font=dict(size=9)),
-                    font=dict(color="#e0e0e0", size=9),
                 )
                 st.plotly_chart(fig_sec, use_container_width=True)
 

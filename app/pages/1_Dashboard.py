@@ -18,6 +18,22 @@ st.set_page_config(page_title="Dashboard · BIST Quant", page_icon="📈", layou
 from app.charts import equity_curve, regime_timeline  # noqa: E402
 from app.layout import page_header, render_sidebar  # noqa: E402
 from app.services import get_regime_data  # noqa: E402
+from app.ui import (  # noqa: E402
+    ACCENT,
+    BG_ELEVATED,
+    BG_SURFACE,
+    BORDER_DEFAULT,
+    FONT_MONO,
+    FONT_SANS,
+    REGIME_COLORS,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING,
+    apply_chart_style,
+    metric_row,
+    regime_badge,
+)
 from app.utils import fmt_num, fmt_pct, load_csv_cached, regime_color, resolve_data_path  # noqa: E402
 
 render_sidebar()
@@ -94,20 +110,25 @@ def _regime_distribution_chart(distribution: dict) -> go.Figure:
         go.Pie(
             labels=labels,
             values=values,
-            hole=0.55,
-            marker=dict(colors=colors),
+            hole=0.6,
+            marker=dict(colors=colors, line=dict(color=BG_SURFACE, width=2)),
             textinfo="label+percent",
-            textfont=dict(size=13),
+            textfont=dict(size=12, family=FONT_SANS, color=TEXT_SECONDARY),
+            hoverinfo="label+value+percent",
         )
     )
     fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=10, r=10, t=30, b=10),
+        template="plotly_white",
+        
+        
+        margin=dict(l=10, r=10, t=36, b=10),
         showlegend=False,
-        title=dict(text="Historical Regime Distribution", x=0),
-        font=dict(color="#e0e0e0"),
+        title=dict(
+            text="Regime Distribution",
+            x=0,
+            font=dict(family=FONT_SANS, size=14, color=TEXT_PRIMARY),
+        ),
+        font=dict(color=TEXT_SECONDARY, family=FONT_SANS),
     )
     return fig
 
@@ -126,7 +147,7 @@ xau_df = load_csv_cached(str(resolve_data_path("xau_try_2013_2026.csv")))
 
 # ── TOP ROW: regime card + 3 macro metrics ────────────────────────────────────
 
-col_regime, col_usdtry, col_gold, col_xu100_price = st.columns([1.6, 1, 1, 1])
+col_regime, col_metrics = st.columns([1.4, 2.6])
 
 # Regime card
 with col_regime:
@@ -142,72 +163,67 @@ with col_regime:
 
     st.markdown(
         f"""
-        <div style="
-            border: 1.5px solid {color};
-            border-radius: 12px;
-            padding: 1.1rem 1.3rem;
-            background: rgba(255,255,255,0.03);
-        ">
-            <div style="font-size:0.75rem; color:#aaa; text-transform:uppercase;
-                        letter-spacing:1px; margin-bottom:0.3rem;">Market Regime</div>
-            <div style="font-size:2.4rem; font-weight:900; color:{color};
-                        line-height:1.1;">{label}</div>
-            <div style="font-size:0.82rem; color:#bbb; margin-top:0.6rem; line-height:1.8;">
-                {ma_icon} {'Above' if above_ma else 'Below'} 50-day MA &nbsp;|&nbsp;
-                📊 Equity allocation: <b style="color:{color};">{alloc_str}</b>
+        <div class="bq-card" style="border-left: 3px solid {color};">
+            <p class="bq-section-label" style="margin-top:0;">Market Regime</p>
+            <div style="font-family:{FONT_MONO};font-size:2rem;font-weight:700;
+                        color:{color};line-height:1.2;margin:8px 0 12px;">
+                {label}
             </div>
-            <div style="font-size:0.78rem; color:#888; margin-top:0.2rem; line-height:1.8;">
-                ⚡ Realized vol: {f"{real_vol*100:.1f}%" if real_vol else "—"} &nbsp;|&nbsp;
-                📐 Vol percentile: {f"{vol_pct:.0f}th" if vol_pct is not None else "—"}<br>
-                🗓 As of: {last_date_str}
+            <div style="font-size:0.82rem;color:{TEXT_SECONDARY};line-height:1.8;">
+                {ma_icon} {'Above' if above_ma else 'Below'} 50-day MA &nbsp;·&nbsp;
+                Allocation: <b style="color:{color};">{alloc_str}</b>
+            </div>
+            <div style="font-size:0.78rem;color:{TEXT_MUTED};margin-top:4px;line-height:1.8;">
+                Vol: {f"{real_vol*100:.1f}%" if real_vol else "—"} &nbsp;·&nbsp;
+                Percentile: {f"{vol_pct:.0f}th" if vol_pct is not None else "—"} &nbsp;·&nbsp;
+                {last_date_str}
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-# USD/TRY
-with col_usdtry:
-    val, chg = "—", None
+# Macro metrics
+with col_metrics:
+    usdtry_val, usdtry_chg = "—", None
     if not usdtry_df.empty:
         s = usdtry_df["USDTRY"].dropna()
-        val = fmt_num(s.iloc[-1], 4)
-        chg = _delta_pct(s, 1)
-    st.metric(
-        label="💵 USD/TRY",
-        value=val,
-        delta=fmt_pct(chg) if chg is not None else None,
-        delta_color="inverse",
-    )
+        usdtry_val = fmt_num(s.iloc[-1], 4)
+        usdtry_chg = _delta_pct(s, 1)
 
-# Gold (TRY/oz)
-with col_gold:
-    val, chg = "—", None
+    gold_val, gold_chg = "—", None
     if not xau_df.empty:
         s = xau_df["XAU_TRY"].dropna()
-        val = fmt_num(s.iloc[-1] / 1000, 1) + "K"
-        chg = _delta_pct(s, 1)
-    st.metric(
-        label="🥇 Gold (TRY/oz)",
-        value=val,
-        delta=fmt_pct(chg) if chg is not None else None,
-    )
+        gold_val = fmt_num(s.iloc[-1] / 1000, 1) + "K"
+        gold_chg = _delta_pct(s, 1)
 
-# XU100 last close
-with col_xu100_price:
-    val, chg = "—", None
+    xu100_val, xu100_chg = "—", None
     xu100_df = load_csv_cached(str(resolve_data_path("xu100_prices.csv")))
     if not xu100_df.empty:
         s = xu100_df["Close"].dropna()
-        val = fmt_num(s.iloc[-1], 0)
-        chg = _delta_pct(s, 1)
-    st.metric(
-        label="📈 XU100",
-        value=val,
-        delta=fmt_pct(chg) if chg is not None else None,
-    )
+        xu100_val = fmt_num(s.iloc[-1], 0)
+        xu100_chg = _delta_pct(s, 1)
 
-st.markdown("<br>", unsafe_allow_html=True)
+    metric_row([
+        {
+            "label": "USD/TRY",
+            "value": usdtry_val,
+            "delta": fmt_pct(usdtry_chg) if usdtry_chg is not None else "",
+            "color": ACCENT,
+        },
+        {
+            "label": "Gold (TRY/oz)",
+            "value": gold_val,
+            "delta": fmt_pct(gold_chg) if gold_chg is not None else "",
+            "color": WARNING,
+        },
+        {
+            "label": "XU100",
+            "value": xu100_val,
+            "delta": fmt_pct(xu100_chg) if xu100_chg is not None else "",
+            "color": color,
+        },
+    ])
 
 # ── MAIN CHART ROW ────────────────────────────────────────────────────────────
 
@@ -239,9 +255,8 @@ with dist_col:
 
 series = regime_info.get("series", {})
 if series:
-    st.markdown("#### Regime History")
+    st.markdown("### Regime History")
     dates_sorted = sorted(series.keys())
-    # Show last 2 years of regime timeline
     dates_sorted = dates_sorted[-504:]
     regimes_sorted = [series[d] for d in dates_sorted]
 
@@ -256,7 +271,7 @@ if series:
 
 # ── MACRO DETAIL EXPANDER ─────────────────────────────────────────────────────
 
-with st.expander("📊 Macro Detail", expanded=False):
+with st.expander("Macro Detail", expanded=False):
     mc1, mc2 = st.columns(2)
 
     with mc1:
@@ -264,18 +279,13 @@ with st.expander("📊 Macro Detail", expanded=False):
         if not usdtry_df.empty:
             usdtry_df["Date"] = pd.to_datetime(usdtry_df["Date"], errors="coerce")
             tail90 = usdtry_df.sort_values("Date").tail(90)
-            fig_fx = go.Figure()
+            from app.ui import base_fig as _base_fig
+            fig_fx = _base_fig("", height=200)
             fig_fx.add_trace(go.Scatter(
                 x=tail90["Date"], y=tail90["USDTRY"],
-                mode="lines", line=dict(color="#3498db", width=2),
+                mode="lines", line=dict(color=ACCENT, width=2),
                 name="USD/TRY",
             ))
-            fig_fx.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=10, r=10, t=10, b=10), height=200,
-                font=dict(color="#e0e0e0"),
-            )
             st.plotly_chart(fig_fx, use_container_width=True)
 
     with mc2:
@@ -283,18 +293,13 @@ with st.expander("📊 Macro Detail", expanded=False):
         if not xau_df.empty:
             xau_df["Date"] = pd.to_datetime(xau_df["Date"], errors="coerce")
             tail90 = xau_df.sort_values("Date").tail(90)
-            fig_gold = go.Figure()
+            from app.ui import base_fig as _base_fig
+            fig_gold = _base_fig("", height=200)
             fig_gold.add_trace(go.Scatter(
                 x=tail90["Date"], y=tail90["XAU_TRY"],
-                mode="lines", line=dict(color="#f39c12", width=2),
+                mode="lines", line=dict(color=WARNING, width=2),
                 name="Gold (TRY)",
             ))
-            fig_gold.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=10, r=10, t=10, b=10), height=200,
-                font=dict(color="#e0e0e0"),
-            )
             st.plotly_chart(fig_gold, use_container_width=True)
 
     # Week-over-week changes table

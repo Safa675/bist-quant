@@ -3,80 +3,70 @@
 ## Requirements
 
 - Python 3.10, 3.11, or 3.12
-- pip (Python package installer)
+- pip >= 21.0
 
-## Installing from Source
+## Basic Installation
 
-Clone the repository and install in development mode:
+Install core package:
 
 ```bash
-git clone https://github.com/OWNER/bist-quant.git
-cd bist-quant
+pip install bist-quant
+```
+
+Includes:
+- Portfolio engine and backtesting
+- Signal builders
+- Core analytics and reporting
+- CLI entry points
+
+## Full Installation
+
+Install all optional dependencies:
+
+```bash
+pip install bist-quant[full]
+```
+
+Adds:
+- REST API support (FastAPI)
+- Multi-asset loaders (crypto and US stocks)
+- Borsapy integration
+- Machine learning extras
+
+## Optional Dependency Sets
+
+```bash
+# API support
+pip install bist-quant[api]
+
+# Multi-asset support
+pip install bist-quant[multi-asset]
+
+# Borsapy integration
+pip install bist-quant[borsapy]
+
+# Machine learning
+pip install bist-quant[ml]
+
+# Development tools
+pip install bist-quant[dev]
+```
+
+## Development Installation
+
+```bash
+git clone https://github.com/Safa675/BIST.git
+cd BIST
 pip install -e ".[dev]"
 ```
 
-This installs the package in editable mode with all development dependencies.
-
-## Optional Dependencies
-
-### Data Quality
-
-For data validation with Pandera:
+## Verify Installation
 
 ```bash
-pip install -e ".[data-quality]"
+python -c "import bist_quant; print(bist_quant.__version__)"
 ```
 
-### Live Data Fetchers
+## Next Steps
 
-For live data fetching from various sources:
-
-```bash
-pip install -e ".[fetchers]"
-```
-
-### Documentation
-
-For building documentation:
-
-```bash
-pip install -e ".[docs]"
-```
-
-## Package Structure
-
-The package is distributed as `bist-quant` but imported as `Models`:
-
-```python
-# Distribution name: bist-quant
-# Import name: Models
-
-from Models import PortfolioEngine
-from Models.signals import build_signal
-from Models.common.utils import cross_sectional_rank
-```
-
-This naming convention is maintained for backward compatibility with existing codebases.
-
-## Verifying Installation
-
-```python
-import Models
-print(Models.get_available_signals())
-```
-
-You should see a list of available signal names.
-
-## Running Tests
-
-```bash
-pytest -q tests
-```
-
-## Building the Package
-
-```bash
-python -m build
-```
-
-This creates wheel and source distributions in the `dist/` directory.
+- [Quick Start](quickstart.md)
+- [Configuration](configuration.md)

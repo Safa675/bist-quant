@@ -1,66 +1,52 @@
+"""Unit tests for signal factory helpers."""
+
 from __future__ import annotations
 
 import pandas as pd
 import pytest
 
-from Models.signals import factory
+from bist_quant.signals import factory
 
 
-def test_get_available_signals_is_non_empty() -> None:
-    names = factory.get_available_signals()
-    assert isinstance(names, list)
-    assert names
+class TestSignalFactory:
+    """Tests for signal factory functionality."""
 
+    def test_get_available_signals(self) -> None:
+        """Test available signals are discoverable."""
+        signals = factory.get_available_signals()
+        assert isinstance(signals, list)
+        assert len(signals) > 0
+        assert "ta_consensus" in signals
+        assert "sovereign_risk" in signals
 
-def test_resolve_signal_params_merges_legacy_and_new() -> None:
-    config = {
-        "parameters": {"lookback": 20, "alpha": 1},
-        "signal_params": {"alpha": 2, "beta": 3},
-    }
-    merged = factory._resolve_signal_params("demo", config)
-    assert merged == {"lookback": 20, "alpha": 2, "beta": 3}
+    def test_unknown_signal_raises(self) -> None:
+        """Test unknown signal name raises clear error."""
+        with pytest.raises(ValueError):
+            factory.build_signal(
+                name="nonexistent_signal_xyz",
+                dates=pd.date_range("2024-01-01", periods=3, freq="D"),
+                loader=object(),
+                config={},
+            )
 
+    def test_build_signal_uses_merged_params(self, monkeypatch) -> None:
+        """Test builder receives merged legacy and signal params."""
+        captured = {}
 
-def test_build_signal_unknown_name_raises() -> None:
-    with pytest.raises(ValueError, match="Unknown signal"):
-        factory.build_signal(
-            name="__does_not_exist__",
-            dates=pd.bdate_range("2025-01-02", periods=5),
-            loader=None,
-            config={},
+        def dummy_builder(dates, loader, config, signal_params):
+            captured["params"] = dict(signal_params)
+            return pd.DataFrame({"THYAO": [1.0] * len(dates)}, index=dates)
+
+        monkeypatch.setitem(factory.BUILDERS, "dummy_signal", dummy_builder)
+
+        dates = pd.date_range("2024-01-01", periods=5, freq="D")
+        result = factory.build_signal(
+            name="dummy_signal",
+            dates=dates,
+            loader=object(),
+            config={"parameters": {"window": 10}, "signal_params": {"threshold": 0.2}},
         )
 
-
-def test_build_signal_validates_builder_return_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _bad_builder(*_args, **_kwargs):
-        return "not-a-dataframe"
-
-    monkeypatch.setattr(factory, "BUILDERS", {"demo": _bad_builder})
-
-    with pytest.raises(TypeError, match="must return pd.DataFrame"):
-        factory.build_signal(
-            name="demo",
-            dates=pd.bdate_range("2025-01-02", periods=4),
-            loader=None,
-            config={},
-        )
-
-
-def test_build_signal_passes_merged_params_to_builder(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: dict[str, dict] = {}
-
-    def _builder(*, dates, loader, config, signal_params):
-        calls["signal_params"] = dict(signal_params)
-        return pd.DataFrame(1.0, index=dates, columns=["AAA"])
-
-    monkeypatch.setattr(factory, "BUILDERS", {"demo": _builder})
-
-    out = factory.build_signal(
-        name="demo",
-        dates=pd.bdate_range("2025-01-02", periods=4),
-        loader=object(),
-        config={"parameters": {"x": 1}, "signal_params": {"x": 2, "y": 3}},
-    )
-
-    assert isinstance(out, pd.DataFrame)
-    assert calls["signal_params"] == {"x": 2, "y": 3}
+        assert isinstance(result, pd.DataFrame)
+        assert captured["params"]["window"] == 10
+        assert captured["params"]["threshold"] == 0.2

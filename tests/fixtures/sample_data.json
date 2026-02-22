@@ -1,0 +1,22 @@
+{
+  "prices": [
+    {
+      "date": "2023-01-02",
+      "ticker": "THYAO",
+      "open": 120.0,
+      "high": 122.5,
+      "low": 119.4,
+      "close": 121.8,
+      "volume": 1523400
+    },
+    {
+      "date": "2023-01-02",
+      "ticker": "GARAN",
+      "open": 34.1,
+      "high": 34.8,
+      "low": 33.9,
+      "close": 34.5,
+      "volume": 5234100
+    }
+  ]
+}

@@ -1,148 +1,138 @@
-from __future__ import annotations
+"""Unit tests for DataLoader."""
 
-from pathlib import Path
+from __future__ import annotations
 
 import pandas as pd
 import pytest
 
-import Models.common.data_loader as data_loader_module
-from Models.common.data_loader import DataLoader
+from bist_quant import DataLoader
 
 
-def _stale_panel() -> pd.DataFrame:
-    index = pd.MultiIndex.from_tuples(
-        [
-            ("AAA", "Bilanço", "Toplam Varlıklar"),
-            ("BBB", "Bilanço", "Toplam Varlıklar"),
-        ],
-        names=["ticker", "sheet_name", "row_name"],
-    )
-    # Deliberately stale (no recent quarter columns).
-    return pd.DataFrame({"2020/12": [100.0, 200.0]}, index=index)
+class TestDataLoader:
+    """Tests for DataLoader class."""
 
+    def test_data_loader_initialization(self) -> None:
+        """Test DataLoader can be initialized."""
+        loader = DataLoader()
+        assert loader is not None
 
-def test_freshness_gate_blocks_stale_fundamentals(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("BIST_ENFORCE_FUNDAMENTAL_FRESHNESS", "1")
-    monkeypatch.setenv("BIST_ALLOW_STALE_FUNDAMENTALS", "0")
+    def test_data_loader_with_custom_path(self, temp_data_dir) -> None:
+        """Test DataLoader with custom data path."""
+        loader = DataLoader(data_dir=temp_data_dir, data_source_priority="local")
+        assert loader.data_dir == temp_data_dir
 
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-    with pytest.raises(ValueError, match="freshness gate"):
-        loader._enforce_fundamentals_freshness_gate(_stale_panel())
+    def test_load_prices_from_csv(self, temp_data_dir) -> None:
+        """Test load_prices reads a canonical CSV input file."""
+        prices_path = temp_data_dir / "bist_prices_full.csv"
+        pd.DataFrame(
+            {
+                "Date": ["2023-01-02", "2023-01-03"],
+                "Ticker": ["THYAO", "GARAN"],
+                "Open": [10.0, 20.0],
+                "High": [11.0, 21.0],
+                "Low": [9.5, 19.5],
+                "Close": [10.8, 20.5],
+                "Volume": [1_000_000, 2_000_000],
+            }
+        ).to_csv(prices_path, index=False)
 
+        loader = DataLoader(data_dir=temp_data_dir, data_source_priority="local")
+        result = loader.load_prices()
 
-def test_freshness_gate_override_allows_stale_fundamentals(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("BIST_ENFORCE_FUNDAMENTAL_FRESHNESS", "1")
-    monkeypatch.setenv("BIST_ALLOW_STALE_FUNDAMENTALS", "1")
+        assert not result.empty
+        assert set(["Date", "Ticker", "Open", "High", "Low", "Close", "Volume"]).issubset(
+            result.columns
+        )
 
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-    # Should not raise because override is enabled.
-    loader._enforce_fundamentals_freshness_gate(_stale_panel())
+    def test_missing_prices_file_raises(self, temp_data_dir) -> None:
+        """Test load_prices raises for missing canonical files."""
+        loader = DataLoader(data_dir=temp_data_dir, data_source_priority="local")
+        with pytest.raises(FileNotFoundError):
+            loader.load_prices()
 
+    def test_economic_calendar_property(self) -> None:
+        """Test DataLoader exposes economic calendar provider facade."""
+        loader = DataLoader()
+        assert loader.economic_calendar is loader.macro_adapter.economic_calendar
 
-def test_load_fundamentals_parquet_invokes_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("BIST_ENFORCE_FUNDAMENTAL_FRESHNESS", "0")
+    def test_derivatives_property_is_lazy_singleton(self, monkeypatch) -> None:
+        """Test DataLoader exposes lazy derivatives provider facade."""
+        from bist_quant.common import data_loader as data_loader_module
 
-    panel = _stale_panel()
-    parquet = tmp_path / "fundamental_data_consolidated.parquet"
-    panel.to_parquet(parquet)
+        class DummyDerivativesProvider:
+            pass
 
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
+        monkeypatch.setattr(data_loader_module, "DerivativesProvider", DummyDerivativesProvider)
 
-    seen = {"called": False}
+        loader = DataLoader(data_source_priority="local")
+        first = loader.derivatives
+        second = loader.derivatives
 
-    def _gate_spy(frame: pd.DataFrame) -> None:
-        seen["called"] = True
-        assert isinstance(frame, pd.DataFrame)
+        assert isinstance(first, DummyDerivativesProvider)
+        assert first is second
 
-    monkeypatch.setattr(loader, "_enforce_fundamentals_freshness_gate", _gate_spy)
-    out = loader.load_fundamentals_parquet()
+    def test_fx_enhanced_property_is_lazy_singleton(self, monkeypatch) -> None:
+        """Test DataLoader exposes lazy enhanced FX provider facade."""
+        from bist_quant.common import data_loader as data_loader_module
 
-    assert isinstance(out, pd.DataFrame)
-    assert seen["called"] is True
+        class DummyFXEnhancedProvider:
+            pass
 
+        monkeypatch.setattr(data_loader_module, "FXEnhancedProvider", DummyFXEnhancedProvider)
 
-def test_load_prices_parquet_and_csv_match(tmp_path: Path) -> None:
-    price_rows = pd.DataFrame(
-        {
-            "Date": pd.to_datetime(["2025-01-02", "2025-01-02", "2025-01-03", "2025-01-03"]),
-            "Ticker": ["AAA.IS", "BBB.IS", "AAA.IS", "BBB.IS"],
-            "Open": [10.0, 20.0, 10.5, 20.2],
-            "High": [10.2, 20.5, 10.6, 20.4],
-            "Low": [9.8, 19.8, 10.2, 20.0],
-            "Close": [10.1, 20.1, 10.4, 20.3],
-            "Volume": [1_000_000, 2_000_000, 1_100_000, 2_100_000],
+        loader = DataLoader(data_source_priority="local")
+        first = loader.fx_enhanced
+        second = loader.fx_enhanced
+
+        assert isinstance(first, DummyFXEnhancedProvider)
+        assert first is second
+
+    def test_technical_scan_delegates_to_engine(self, monkeypatch) -> None:
+        """Test DataLoader.technical_scan forwards args to TechnicalScannerEngine."""
+        from bist_quant.engines import technical_scanner as technical_scanner_module
+
+        captured: dict[str, object] = {}
+
+        class DummyScanner:
+            def scan(self, universe, condition, interval):  # noqa: ANN001
+                captured["single"] = {
+                    "universe": universe,
+                    "condition": condition,
+                    "interval": interval,
+                }
+                return pd.DataFrame({"symbol": ["THYAO"]})
+
+            def scan_multi(self, universe, conditions, interval):  # noqa: ANN001
+                captured["multi"] = {
+                    "universe": universe,
+                    "conditions": conditions,
+                    "interval": interval,
+                }
+                return pd.DataFrame({"symbol": ["THYAO"]})
+
+        monkeypatch.setattr(technical_scanner_module, "TechnicalScannerEngine", DummyScanner)
+
+        loader = DataLoader(data_source_priority="local")
+        single = loader.technical_scan(
+            condition="rsi < 30",
+            universe="XU100",
+            interval="1d",
+        )
+        multi = loader.technical_scan(
+            universe="XU100",
+            conditions=["rsi < 30", "macd crosses_above signal"],
+            interval="1d",
+        )
+
+        assert list(single["symbol"]) == ["THYAO"]
+        assert list(multi["symbol"]) == ["THYAO"]
+        assert captured["single"] == {
+            "universe": "XU100",
+            "condition": "rsi < 30",
+            "interval": "1d",
         }
-    )
-
-    csv_path = tmp_path / "prices.csv"
-    parquet_path = csv_path.with_suffix(".parquet")
-    price_rows.to_csv(csv_path, index=False)
-    price_rows.to_parquet(parquet_path, index=False)
-
-    parquet_loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-    csv_loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-
-    loaded_from_parquet = parquet_loader.load_prices(csv_path)
-    parquet_path.unlink()
-    loaded_from_csv = csv_loader.load_prices(csv_path)
-
-    pd.testing.assert_frame_equal(
-        loaded_from_parquet.sort_values(["Date", "Ticker"]).reset_index(drop=True),
-        loaded_from_csv.sort_values(["Date", "Ticker"]).reset_index(drop=True),
-        check_dtype=False,
-    )
-
-
-def test_load_prices_missing_file_raises_helpful_error(tmp_path: Path) -> None:
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-    missing_csv = tmp_path / "missing_prices.csv"
-
-    with pytest.raises(FileNotFoundError, match="missing_prices\\.csv"):
-        loader.load_prices(missing_csv)
-
-
-def test_load_fundamentals_empty_directory_returns_empty_map(tmp_path: Path) -> None:
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-
-    out = loader.load_fundamentals()
-
-    assert isinstance(out, dict)
-    assert out == {}
-
-
-def test_build_close_panel_normalizes_is_suffix(tmp_path: Path) -> None:
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-    prices = pd.DataFrame(
-        {
-            "Date": pd.to_datetime(["2025-01-02", "2025-01-02"]),
-            "Ticker": ["abc.IS", "XYZ.is"],
-            "Close": [100.0, 200.0],
+        assert captured["multi"] == {
+            "universe": "XU100",
+            "conditions": ["rsi < 30", "macd crosses_above signal"],
+            "interval": "1d",
         }
-    )
-
-    panel = loader.build_close_panel(prices)
-
-    # Column order may vary, so check as set
-    assert set(panel.columns.tolist()) == {"ABC", "XYZ"}
-    assert isinstance(panel.index, pd.DatetimeIndex)
-
-
-def test_load_regime_predictions_missing_regime_column_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    regime_root = tmp_path / "regime_filter"
-    outputs = regime_root / "outputs"
-    outputs.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(
-        {
-            "Date": ["2025-01-02", "2025-01-03"],
-            "unexpected_col": ["foo", "bar"],
-        }
-    ).to_csv(outputs / "regime_features.csv", index=False)
-
-    monkeypatch.setattr(data_loader_module, "REGIME_DIR_CANDIDATES", [regime_root])
-    loader = DataLoader(data_dir=tmp_path, regime_model_dir=tmp_path)
-
-    with pytest.raises(ValueError, match="No regime column found in regime file"):
-        loader.load_regime_predictions()

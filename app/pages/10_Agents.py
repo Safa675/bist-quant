@@ -101,14 +101,14 @@ _PLANNED_AGENTS: list[dict[str, str]] = [
 st.markdown(
     """
     <div style="
-        background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
-        border:1px solid #30305a;
+        background: #FFFFFF;
+        border: 1px solid #E0E0E0;
         border-radius:12px;
         padding:1.2rem 1.6rem;
         margin-bottom:1.5rem;
     ">
         <h3 style="margin:0 0 0.4rem 0;">🚧 &nbsp; LLM Agent Integration — Under Development</h3>
-        <p style="margin:0;color:#aaa;font-size:0.9rem;">
+        <p style="margin:0;color:#6B7280;font-size:0.9rem;">
             This page is a live placeholder that will host autonomous LLM-powered research agents.
             The session log below already captures simulated agent activity and will connect to
             real orchestration backends (LangChain / LangGraph / OpenAI Assistants API) in a
@@ -125,27 +125,29 @@ for idx, agent in enumerate(_PLANNED_AGENTS):
         st.markdown(
             f"""
             <div style="
-                border:1px solid #2a2a4a;
-                border-radius:10px;
-                padding:1rem 1.1rem 1.1rem;
-                margin-bottom:1rem;
-                background:#12122a;
+                border: 1px solid #E0E0E0;
+                border-radius: 10px;
+                padding: 1.2rem;
+                margin-bottom: 1rem;
+                background: #FFFFFF;
+                transition: transform 0.2s, background 0.2s;
             ">
-                <div style="font-size:1.8rem;margin-bottom:0.25rem;">{agent['icon']}</div>
-                <div style="font-weight:700;font-size:1rem;margin-bottom:0.4rem;">{agent['name']}</div>
-                <div style="color:#aaa;font-size:0.82rem;line-height:1.45;margin-bottom:0.6rem;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">{agent['icon']}</div>
+                <div style="font-weight:600; font-size:1.1rem; margin-bottom:0.4rem; color: #111827;">{agent['name']}</div>
+                <div style="color:#6B7280; font-size:0.85rem; line-height:1.5; margin-bottom:0.8rem;">
                     {agent['description']}
                 </div>
-                <div style="font-size:0.72rem;color:#555;letter-spacing:0.5px;">{agent['tags']}</div>
+                <div style="font-size:0.75rem; color:#10B981; letter-spacing:0.5px;">{agent['tags']}</div>
                 <div style="
                     display:inline-block;
-                    margin-top:0.6rem;
-                    background:#2a2a4a;
-                    color:#9b9bff;
-                    border-radius:6px;
+                    margin-top:0.8rem;
+                    background:#F4F7F9;
+                    color:#6B7280;
+                    border: 1px solid #E0E0E0;
+                    border-radius:4px;
                     padding:2px 8px;
-                    font-size:0.72rem;
-                    font-weight:600;
+                    font-size:0.7rem;
+                    font-weight:500;
                     letter-spacing:0.8px;
                 ">PLANNED</div>
             </div>

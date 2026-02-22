@@ -1,99 +1,57 @@
 # BIST Quant
 
-A quantitative finance research and backtesting library for Borsa Istanbul (BIST).
+**BIST Quant** is a quantitative finance library for Python, designed for backtesting and analysis on BIST (Borsa Istanbul) and multi-asset markets.
 
 ## Features
 
-- **52+ Signal Builders**: Comprehensive coverage of factor investing strategies
-  - Momentum: price momentum, consistent momentum, residual momentum, trend following
-  - Value: P/E, P/B, dividend yield, composite value metrics
-  - Quality: profitability, asset growth, earnings quality, Piotroski F-score
-  - Technical: moving averages, RSI, MACD, Bollinger Bands, Ichimoku
-  - Composite: multi-factor combinations and rotation strategies
-
-- **Portfolio Engine**: YAML-based strategy configuration with flexible backtesting
-  - Multiple rebalancing frequencies (monthly, quarterly)
-  - Regime-aware allocation adjustment
-  - Signal lag controls for realistic execution
-
-- **Risk Management**: Comprehensive risk controls
-  - Stop-loss protection
-  - Position size limits
-  - Volatility targeting
-  - Inverse downside volatility weighting
-  - Market-cap aware slippage modeling
-
-- **Data Pipeline**: Robust fundamental data handling
-  - Schema validation
-  - Freshness gate controls
-  - TTM calculations
-  - Reporting lag adjustments
-
-- **Benchmarking**: Performance regression testing
-  - Automated benchmark suite
-  - Memory profiling
-  - Baseline comparison
-
-## Quick Start
-
-```python
-from Models import PortfolioEngine, build_signal, get_available_signals
-
-# List available signals
-print(get_available_signals())
-
-# Build a signal
-signal = build_signal("momentum", dates, loader, config)
-
-# Run backtest via CLI
-# bist-backtest momentum --start-date 2020-01-01
-```
+- **74+ signal builders** for momentum, value, quality, volatility, and technical indicators
+- **Backtesting engine** with vectorized execution and realistic constraints
+- **Portfolio tools** for allocation and optimization workflows
+- **Risk controls** including VaR, CVaR, max drawdown, and position sizing helpers
+- **Multi-asset support** across BIST, crypto, US stocks, FX, commodities, and funds
+- **Performance-focused stack** with NumPy and pandas
+- **Extensible architecture** for custom signal and strategy research
 
 ## Installation
 
 ```bash
-# Install from source
-pip install -e ".[dev]"
-
-# Or just core dependencies
-pip install -e .
+pip install bist-quant
 ```
 
-## CLI Usage
+For optional integrations:
 
 ```bash
-# Run a specific signal
-bist-backtest momentum
+pip install bist-quant[full]
+```
 
-# Run all signals
-bist-backtest all --start-date 2020-01-01
+## Quick Example
 
-# List available signals
-bist-backtest --list-signals
+```python
+from bist_quant import PortfolioEngine
 
-# Dry run (validate without executing)
-bist-backtest momentum --dry-run
+engine = PortfolioEngine(options={
+    "signal": "momentum",
+    "lookback_period": 21,
+    "top_n": 10,
+})
 
-# Verbose output
-bist-backtest momentum -v
+result = engine.run_backtest(
+    signals=["momentum"],
+    start_date="2023-01-01",
+    end_date="2023-12-31",
+)
+
+print(f"Sharpe Ratio: {result.metrics.get('sharpe', 0.0):.2f}")
+print(f"Total Return: {result.metrics.get('total_return', 0.0):.2%}")
 ```
 
 ## Documentation
 
-- [Getting Started](getting-started/installation.md) - Installation and setup
-- [User Guide](guide/backtests.md) - How to run backtests
-- [API Reference](api/index.md) - Detailed API documentation
-- [Examples](examples/quick-start.md) - Code examples
-
-## Requirements
-
-- Python 3.10+
-- pandas 2.0+
-- numpy 1.24+
-- PyYAML 6.0+
-
-See [pyproject.toml](https://github.com/OWNER/bist-quant/blob/main/pyproject.toml) for full dependency list.
+- [Getting Started](getting-started/installation.md)
+- [User Guide](user-guide/signals.md)
+- [API Reference](api-reference/core.md)
+- [Examples](examples/basic-backtest.md)
 
 ## License
 
-Proprietary - All rights reserved.
+MIT License. See [LICENSE](https://github.com/Safa675/BIST/blob/main/LICENSE).

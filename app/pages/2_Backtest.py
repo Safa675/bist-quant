@@ -24,6 +24,7 @@ st.set_page_config(page_title="Backtest · BIST Quant", page_icon="🔄", layout
 from app.charts import drawdown_chart, equity_curve, monthly_returns_heatmap  # noqa: E402
 from app.layout import page_header, render_sidebar  # noqa: E402
 from app.services import get_core_service  # noqa: E402
+from app.ui import empty_state  # noqa: E402
 from app.utils import fmt_num, fmt_pct, run_in_thread  # noqa: E402
 
 render_sidebar()
@@ -322,158 +323,159 @@ def _render_results(result: dict[str, Any]) -> None:
 ctrl_col, spacer, result_col = st.columns([1, 0.05, 2.4])
 
 with ctrl_col:
-    st.markdown("### ⚙️ Strategy")
+    with st.container(border=True):
+        st.markdown("### ⚙️ Strategy")
 
-    core = get_core_service()
-    signal_names: list[str] = []
-    if core is not None:
-        try:
-            signal_names = core.list_available_signals()
-        except Exception:
-            pass
+        core = get_core_service()
+        signal_names: list[str] = []
+        if core is not None:
+            try:
+                signal_names = core.list_available_signals()
+            except Exception:
+                pass
 
-    if not signal_names:
-        st.warning("Core service unavailable — no signals loaded.")
-        st.stop()
+        if not signal_names:
+            st.warning("Core service unavailable — no signals loaded.")
+            st.stop()
 
-    # ── prefill banner ────────────────────────────────────────────────────────
-    if _bt_pf:
-        _pf_sig = _bt_pf.get("signal", "?")
-        _pf_top_n = _bt_pf.get("top_n")
-        _banner_parts = [f"signal: **{_pf_sig}**"]
-        if _pf_top_n is not None:
-            _banner_parts.append(f"Top-N: **{_pf_top_n}**")
-        st.info("⚙️ **Optimization prefill** — " + ", ".join(_banner_parts))
-        if st.button("✖ Clear prefill", key="bt_clear_pf"):
-            st.session_state.pop("_bt_pf", None)
-            _bt_pf = {}
-            st.rerun()
+        # ── prefill banner ────────────────────────────────────────────────────────
+        if _bt_pf:
+            _pf_sig = _bt_pf.get("signal", "?")
+            _pf_top_n = _bt_pf.get("top_n")
+            _banner_parts = [f"signal: **{_pf_sig}**"]
+            if _pf_top_n is not None:
+                _banner_parts.append(f"Top-N: **{_pf_top_n}**")
+            st.info("⚙️ **Optimization prefill** — " + ", ".join(_banner_parts))
+            if st.button("✖ Clear prefill", key="bt_clear_pf"):
+                st.session_state.pop("_bt_pf", None)
+                _bt_pf = {}
+                st.rerun()
 
-    # Determine default signal index (use prefill when available)
-    _pf_signal = _bt_pf.get("signal")
-    _sig_default_idx = (
-        signal_names.index(_pf_signal)
-        if _pf_signal and _pf_signal in signal_names
-        else (signal_names.index("momentum") if "momentum" in signal_names else 0)
-    )
-
-    selected_signal = st.selectbox(
-        "Signal / Factor",
-        options=signal_names,
-        index=_sig_default_idx,
-    )
-
-    # Load defaults from signal config
-    signal_config: dict[str, Any] = {}
-    if core is not None:
-        try:
-            signal_config = core.get_signal_details(selected_signal)
-        except Exception:
-            pass
-
-    port_opts = signal_config.get("portfolio_options", {})
-    timeline = signal_config.get("timeline", {})
-    default_start = timeline.get("start_date", "2014-01-01")
-    default_end = timeline.get("end_date", str(date.today()))
-
-    st.markdown("### 📅 Date Range")
-    col_s, col_e = st.columns(2)
-    with col_s:
-        start_date = st.date_input(
-            "Start",
-            value=datetime.strptime(default_start, "%Y-%m-%d").date(),
-            min_value=date(2010, 1, 1),
-            max_value=date.today(),
-        )
-    with col_e:
-        end_date = st.date_input(
-            "End",
-            value=min(datetime.strptime(default_end[:10], "%Y-%m-%d").date(), date.today()),
-            min_value=date(2010, 1, 1),
-            max_value=date.today(),
+        # Determine default signal index (use prefill when available)
+        _pf_signal = _bt_pf.get("signal")
+        _sig_default_idx = (
+            signal_names.index(_pf_signal)
+            if _pf_signal and _pf_signal in signal_names
+            else (signal_names.index("momentum") if "momentum" in signal_names else 0)
         )
 
-    st.markdown("### 🎛 Portfolio Options")
+        selected_signal = st.selectbox(
+            "Signal / Factor",
+            options=signal_names,
+            index=_sig_default_idx,
+        )
 
-    rebalance_freq = st.selectbox(
-        "Rebalance",
-        ["monthly", "quarterly", "weekly"],
-        index=["monthly", "quarterly", "weekly"].index(
-            signal_config.get("rebalance_frequency", "monthly")
-        ),
-    )
-    top_n = st.slider(
-        "Top N stocks",
-        min_value=5,
-        max_value=50,
-        value=int(_bt_pf.get("top_n") or port_opts.get("top_n", 20)),
-        step=5,
-    )
-    max_weight = st.slider("Max position weight", 0.05, 0.50,
-                           value=float(port_opts.get("max_position_weight", 0.25)),
-                           step=0.05, format="%.0f%%",
-                           help="Max single position weight (as decimal)")
+        # Load defaults from signal config
+        signal_config: dict[str, Any] = {}
+        if core is not None:
+            try:
+                signal_config = core.get_signal_details(selected_signal)
+            except Exception:
+                pass
 
-    with st.expander("Risk Controls", expanded=False):
-        use_regime = st.checkbox("Regime filter", value=bool(port_opts.get("use_regime_filter", True)))
-        use_liq = st.checkbox("Liquidity filter", value=bool(port_opts.get("use_liquidity_filter", True)))
-        use_slippage = st.checkbox("Slippage", value=bool(port_opts.get("use_slippage", True)))
-        slippage_bps = st.slider("Slippage (bps)", 0, 50,
-                                 value=int(port_opts.get("slippage_bps", 5)),
-                                 disabled=not use_slippage)
-        use_stop = st.checkbox("Stop loss", value=bool(port_opts.get("use_stop_loss", False)))
-        stop_threshold = st.slider("Stop threshold", 0.05, 0.40,
-                                   value=float(port_opts.get("stop_loss_threshold", 0.15)),
+        port_opts = signal_config.get("portfolio_options", {})
+        timeline = signal_config.get("timeline", {})
+        default_start = timeline.get("start_date", "2014-01-01")
+        default_end = timeline.get("end_date", str(date.today()))
+
+        st.markdown("### 📅 Date Range")
+        col_s, col_e = st.columns(2)
+        with col_s:
+            start_date = st.date_input(
+                "Start",
+                value=datetime.strptime(default_start, "%Y-%m-%d").date(),
+                min_value=date(2010, 1, 1),
+                max_value=date.today(),
+            )
+        with col_e:
+            end_date = st.date_input(
+                "End",
+                value=min(datetime.strptime(default_end[:10], "%Y-%m-%d").date(), date.today()),
+                min_value=date(2010, 1, 1),
+                max_value=date.today(),
+            )
+
+        st.markdown("### 🎛 Portfolio Options")
+
+        rebalance_freq = st.selectbox(
+            "Rebalance",
+            ["monthly", "quarterly", "weekly"],
+            index=["monthly", "quarterly", "weekly"].index(
+                signal_config.get("rebalance_frequency", "monthly")
+            ),
+        )
+        top_n = st.slider(
+            "Top N stocks",
+            min_value=5,
+            max_value=50,
+            value=int(_bt_pf.get("top_n") or port_opts.get("top_n", 20)),
+            step=5,
+        )
+        max_weight = st.slider("Max position weight", 0.05, 0.50,
+                               value=float(port_opts.get("max_position_weight", 0.25)),
+                               step=0.05, format="%.0f%%",
+                               help="Max single position weight (as decimal)")
+
+        with st.expander("Risk Controls", expanded=False):
+            use_regime = st.checkbox("Regime filter", value=bool(port_opts.get("use_regime_filter", True)))
+            use_liq = st.checkbox("Liquidity filter", value=bool(port_opts.get("use_liquidity_filter", True)))
+            use_slippage = st.checkbox("Slippage", value=bool(port_opts.get("use_slippage", True)))
+            slippage_bps = st.slider("Slippage (bps)", 0, 50,
+                                     value=int(port_opts.get("slippage_bps", 5)),
+                                     disabled=not use_slippage)
+            use_stop = st.checkbox("Stop loss", value=bool(port_opts.get("use_stop_loss", False)))
+            stop_threshold = st.slider("Stop threshold", 0.05, 0.40,
+                                       value=float(port_opts.get("stop_loss_threshold", 0.15)),
+                                       step=0.01, format="%.0f%%",
+                                       disabled=not use_stop)
+            use_vol_tgt = st.checkbox("Volatility targeting",
+                                      value=bool(port_opts.get("use_vol_targeting", False)))
+            target_vol = st.slider("Target vol", 0.05, 0.60,
+                                   value=float(port_opts.get("target_downside_vol", 0.20)),
                                    step=0.01, format="%.0f%%",
-                                   disabled=not use_stop)
-        use_vol_tgt = st.checkbox("Volatility targeting",
-                                  value=bool(port_opts.get("use_vol_targeting", False)))
-        target_vol = st.slider("Target vol", 0.05, 0.60,
-                               value=float(port_opts.get("target_downside_vol", 0.20)),
-                               step=0.01, format="%.0f%%",
-                               disabled=not use_vol_tgt)
+                                   disabled=not use_vol_tgt)
 
-    st.markdown("---")
+        st.markdown("---")
 
-    run_btn = st.button("▶ Run Backtest", type="primary", use_container_width=True)
+        run_btn = st.button("▶ Run Backtest", type="primary", use_container_width=True)
 
-    # ── Run logic ─────────────────────────────────────────────────────────────
-    if run_btn and core is not None:
-        if start_date >= end_date:
-            st.error("Start date must be before end date.")
-        else:
-            fut: Future = run_in_thread(
-                core.run_backtest,
-                factor_name=selected_signal,
-                start_date=str(start_date),
-                end_date=str(end_date),
-                rebalance_frequency=rebalance_freq,
-                top_n=top_n,
-                max_position_weight=max_weight,
-                use_regime_filter=use_regime,
-                use_liquidity_filter=use_liq,
-                use_slippage=use_slippage,
-                slippage_bps=float(slippage_bps),
-                use_stop_loss=use_stop,
-                stop_loss_threshold=stop_threshold,
-                use_vol_targeting=use_vol_tgt,
-                target_downside_vol=target_vol,
-            )
-            st.session_state["bt_future"] = fut
+        # ── Run logic ─────────────────────────────────────────────────────────────
+        if run_btn and core is not None:
+            if start_date >= end_date:
+                st.error("Start date must be before end date.")
+            else:
+                fut: Future = run_in_thread(
+                    core.run_backtest,
+                    factor_name=selected_signal,
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    rebalance_frequency=rebalance_freq,
+                    top_n=top_n,
+                    max_position_weight=max_weight,
+                    use_regime_filter=use_regime,
+                    use_liquidity_filter=use_liq,
+                    use_slippage=use_slippage,
+                    slippage_bps=float(slippage_bps),
+                    use_stop_loss=use_stop,
+                    stop_loss_threshold=stop_threshold,
+                    use_vol_targeting=use_vol_tgt,
+                    target_downside_vol=target_vol,
+                )
+                st.session_state["bt_future"] = fut
 
-    # ── Run history sidebar ───────────────────────────────────────────────────
-    if st.session_state["bt_results"]:
-        st.markdown("### 📚 Run History")
-        for i, r in enumerate(reversed(st.session_state["bt_results"])):
-            idx = len(st.session_state["bt_results"]) - 1 - i
-            m = r.get("metrics", {})
-            label = (
-                f"**{r.get('factor_name','?')}** "
-                f"{r.get('start_date','')[:4]}–{r.get('end_date','')[:4]}  \n"
-                f"CAGR {fmt_pct(m.get('cagr',0)*100)} | Sharpe {fmt_num(m.get('sharpe',0))}"
-            )
-            if st.button(label, key=f"hist_{idx}", use_container_width=True):
-                st.session_state["bt_active_idx"] = idx
+        # ── Run history sidebar ───────────────────────────────────────────────────
+        if st.session_state["bt_results"]:
+            st.markdown("### 📚 Run History")
+            for i, r in enumerate(reversed(st.session_state["bt_results"])):
+                idx = len(st.session_state["bt_results"]) - 1 - i
+                m = r.get("metrics", {})
+                label = (
+                    f"**{r.get('factor_name','?')}** "
+                    f"{r.get('start_date','')[:4]}–{r.get('end_date','')[:4]}  \n"
+                    f"CAGR {fmt_pct(m.get('cagr',0)*100)} | Sharpe {fmt_num(m.get('sharpe',0))}"
+                )
+                if st.button(label, key=f"hist_{idx}", use_container_width=True):
+                    st.session_state["bt_active_idx"] = idx
 
 # ── Results panel ─────────────────────────────────────────────────────────────
 with result_col:
@@ -515,16 +517,8 @@ with result_col:
     if active_idx is not None and 0 <= active_idx < len(results):
         _render_results(results[active_idx])
     else:
-        st.markdown(
-            """
-            <div style="
-                display:flex; flex-direction:column; align-items:center;
-                justify-content:center; height:60vh;
-                color:#555; font-size:1.1rem;
-            ">
-                <div style="font-size:3rem; margin-bottom:1rem;">🔄</div>
-                <div>Configure a strategy on the left and click <b>Run Backtest</b></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        empty_state(
+            icon="📊",
+            title="No backtest results yet",
+            hint="Configure a strategy on the left and click Run Backtest to see results here.",
         )
