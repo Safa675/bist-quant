@@ -19,11 +19,11 @@ _DATA_DIR = _REPO_ROOT / "data"
 
 # ── regime colours ────────────────────────────────────────────────────────────
 _REGIME_COLORS: dict[str, str] = {
-    "bull": "#2ecc71",
-    "recovery": "#f39c12",
-    "bear": "#e74c3c",
-    "stress": "#8e44ad",
-    "unknown": "#95a5a6",
+    "bull":     "#00c97a",
+    "recovery": "#f0c040",
+    "bear":     "#ff3b5c",
+    "stress":   "#b06aff",
+    "unknown":  "#4a5a7a",
 }
 
 

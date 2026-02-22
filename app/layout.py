@@ -15,11 +15,11 @@ _VERSION = "v2.0.0"
 # ── regime badge colours ──────────────────────────────────────────────────────
 _BADGE_STYLES: dict[str, tuple[str, str]] = {
     # regime_lower: (bg_hex, text_hex)
-    "bull": ("#2ecc71", "#0a3d1f"),
-    "recovery": ("#f39c12", "#3d2600"),
-    "bear": ("#e74c3c", "#3d0800"),
-    "stress": ("#8e44ad", "#1e0033"),
-    "unknown": ("#95a5a6", "#1a1a2e"),
+    "bull":     ("#00c97a", "#002a18"),
+    "recovery": ("#f0c040", "#2a1e00"),
+    "bear":     ("#ff3b5c", "#2a0008"),
+    "stress":   ("#b06aff", "#160033"),
+    "unknown":  ("#4a5a7a", "#0a0e1a"),
 }
 
 # ── navigation pages ──────────────────────────────────────────────────────────
@@ -76,11 +76,112 @@ def _last_xu100_date() -> str:
 
 def render_sidebar() -> None:
     """Render the shared sidebar: logo, regime badge, navigation, data status."""
-    # Hide the auto-generated Streamlit multipage nav (the symbol-less duplicate)
+    # ── global terminal CSS ───────────────────────────────────────────────────
     st.markdown(
         """
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+        /* Base font */
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
+
+        /* Monospace for numbers / data */
+        [data-testid="stMetricValue"],
+        [data-testid="stDataFrame"] td,
+        .dataframe td, code, pre {
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+
+        /* Compress main container */
+        .block-container {
+            padding-top: 1.2rem !important;
+            padding-bottom: 1rem !important;
+            max-width: 1440px !important;
+        }
+
+        /* Metric tiles */
+        [data-testid="stMetric"] {
+            background: #111827 !important;
+            border: 1px solid #1c2a3a !important;
+            border-radius: 2px !important;
+            padding: 0.55rem 0.8rem !important;
+        }
+        [data-testid="stMetricLabel"] p {
+            font-size: 0.65rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1.4px !important;
+            color: #4a5a7a !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stMetricValue"] {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 1.35rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.5px !important;
+        }
+        [data-testid="stMetricDelta"] {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 0.7rem !important;
+        }
+
+        /* Headings */
+        h1 { font-size: 1.25rem !important; font-weight: 700 !important; letter-spacing: -0.2px !important; }
+        h2 { font-size: 1.05rem !important; font-weight: 600 !important; }
+        h3 {
+            font-size: 0.68rem !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1.8px !important;
+            color: #4a5a7a !important;
+            border-bottom: 1px solid #1c2a3a !important;
+            padding-bottom: 0.35rem !important;
+            margin-bottom: 0.6rem !important;
+        }
+
+        /* Divider */
+        hr { border-color: #1c2a3a !important; opacity: 1 !important; margin: 0.7rem 0 !important; }
+
+        /* Tabs */
+        [data-testid="stTabs"] [role="tab"] {
+            font-size: 0.72rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1.1px !important;
+        }
+
+        /* Inputs / selects */
+        [data-testid="stNumberInput"] input,
+        [data-testid="stTextInput"] input,
+        [data-baseweb="select"] * {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 0.8rem !important;
+        }
+
+        /* Expander header */
+        [data-testid="stExpander"] summary {
+            font-size: 0.72rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1.1px !important;
+            color: #4a5a7a !important;
+        }
+
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background: #07090e !important;
+            border-right: 1px solid #1c2a3a !important;
+        }
         [data-testid="stSidebarNav"] { display: none !important; }
+
+        /* st.container borders — tighter corners */
+        [data-testid="stVerticalBlockBorderWrapper"] > div:first-child {
+            border-radius: 3px !important;
+            border-color: #1c2a3a !important;
+        }
+
+        /* Dataframe */
+        [data-testid="stDataFrame"] {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 0.78rem !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -143,15 +244,29 @@ def render_sidebar() -> None:
 
 
 def page_header(title: str, subtitle: str = "") -> None:
-    """Render a consistent H1 + optional subtitle + divider at the top of a page."""
-    st.title(title)
-    if subtitle:
-        st.markdown(
-            f'<p style="color:#aaa; margin-top:-0.8rem; font-size:1rem;">'
-            f"{subtitle}</p>",
-            unsafe_allow_html=True,
-        )
-    st.divider()
+    """Compact terminal-style page header — single-line topbar with divider."""
+    # Strip leading emoji for the label, keep for accent
+    import re
+    clean = title.strip()
+    st.markdown(
+        f"""
+        <div style="
+            display:flex; align-items:baseline; justify-content:space-between;
+            border-bottom: 1px solid #1c2a3a;
+            padding-bottom: 0.55rem; margin-bottom: 0.9rem;">
+            <div>
+                <span style="font-size:1.15rem; font-weight:700;
+                             letter-spacing:-0.3px; color:#c9d1e0;">{clean}</span>
+            </div>
+            <div style="text-align:right;">
+                <span style="font-size:0.68rem; color:#4a5a7a;
+                             letter-spacing:0.8px; text-transform:uppercase;
+                             font-family:'JetBrains Mono',monospace;">{subtitle}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 __all__ = ["render_sidebar", "page_header"]

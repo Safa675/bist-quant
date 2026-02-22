@@ -73,10 +73,12 @@ with col_regime:
     color = regime_color(label)
     st.markdown(
         f"""
-        <div style="border-left: 4px solid {color}; padding-left:0.8rem;">
-            <div style="font-size:0.8rem; color:#aaa; text-transform:uppercase;
-                        letter-spacing:0.8px;">Market Regime</div>
-            <div style="font-size:1.9rem; font-weight:800; color:{color};">
+        <div style="border-left: 2px solid {color}; padding-left:0.75rem;">
+            <div style="font-size:0.62rem; color:#4a5a7a; text-transform:uppercase;
+                        letter-spacing:1.4px; font-family:'JetBrains Mono',monospace;
+                        font-weight:600;">Market Regime</div>
+            <div style="font-size:1.6rem; font-weight:800; color:{color};
+                        font-family:'JetBrains Mono',monospace; letter-spacing:-1px;">
                 {label}
             </div>
         </div>
@@ -97,10 +99,12 @@ with col_signals:
             pass
     st.markdown(
         f"""
-        <div style="border-left: 4px solid #3498db; padding-left:0.8rem;">
-            <div style="font-size:0.8rem; color:#aaa; text-transform:uppercase;
-                        letter-spacing:0.8px;">Available Signals</div>
-            <div style="font-size:1.9rem; font-weight:800; color:#3498db;">
+        <div style="border-left: 2px solid #3a9df8; padding-left:0.75rem;">
+            <div style="font-size:0.62rem; color:#4a5a7a; text-transform:uppercase;
+                        letter-spacing:1.4px; font-family:'JetBrains Mono',monospace;
+                        font-weight:600;">Available Signals</div>
+            <div style="font-size:1.6rem; font-weight:800; color:#3a9df8;
+                        font-family:'JetBrains Mono',monospace; letter-spacing:-1px;">
                 {signal_count}
             </div>
         </div>
@@ -124,10 +128,12 @@ with col_date:
         pass
     st.markdown(
         f"""
-        <div style="border-left: 4px solid #9b59b6; padding-left:0.8rem;">
-            <div style="font-size:0.8rem; color:#aaa; text-transform:uppercase;
-                        letter-spacing:0.8px;">Last Data Update</div>
-            <div style="font-size:1.9rem; font-weight:800; color:#9b59b6;">
+        <div style="border-left: 2px solid #b06aff; padding-left:0.75rem;">
+            <div style="font-size:0.62rem; color:#4a5a7a; text-transform:uppercase;
+                        letter-spacing:1.4px; font-family:'JetBrains Mono',monospace;
+                        font-weight:600;">Last Data Update</div>
+            <div style="font-size:1.6rem; font-weight:800; color:#b06aff;
+                        font-family:'JetBrains Mono',monospace; letter-spacing:-1px;">
                 {last_date}
             </div>
         </div>
@@ -158,17 +164,31 @@ a.nav-card-link {
     display: block;
 }
 .nav-card {
-    border: 1px solid #2a2a3e;
-    border-radius: 10px;
-    padding: 1rem 1.1rem;
-    background: rgba(255,255,255,0.03);
-    transition: border-color 0.2s, background 0.2s;
+    border: 1px solid #1c2a3a;
+    border-radius: 2px;
+    padding: 0.85rem 1rem;
+    background: #0d1220;
+    transition: border-color 0.15s, background 0.15s;
     cursor: pointer;
 }
-a.nav-card-link:hover .nav-card { border-color: #3498db; background: rgba(52,152,219,0.06); }
-.nav-card-icon { font-size: 1.6rem; }
-.nav-card-title { font-weight: 700; font-size: 1rem; margin: 0.2rem 0 0.1rem 0; }
-.nav-card-desc  { color: #888; font-size: 0.82rem; }
+a.nav-card-link:hover .nav-card {
+    border-color: #3a9df8;
+    background: #0f172a;
+}
+.nav-card-icon { font-size: 1.3rem; line-height: 1; margin-bottom: 0.4rem; }
+.nav-card-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: #c9d1e0;
+    margin: 0.2rem 0 0.15rem 0;
+    letter-spacing: -0.1px;
+}
+.nav-card-desc {
+    font-size: 0.73rem;
+    color: #4a5a7a;
+    line-height: 1.35;
+}
 </style>
 """
 st.markdown(_card_css, unsafe_allow_html=True)

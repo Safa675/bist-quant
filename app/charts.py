@@ -13,20 +13,33 @@ import plotly.graph_objects as go
 
 # ── colour constants ──────────────────────────────────────────────────────────
 REGIME_COLORS: dict[str, str] = {
-    "bull": "#2ecc71",
-    "recovery": "#f39c12",
-    "bear": "#e74c3c",
-    "stress": "#8e44ad",
-    "unknown": "#95a5a6",
+    "bull": "#00c97a",
+    "recovery": "#f0c040",
+    "bear": "#ff3b5c",
+    "stress": "#b06aff",
+    "unknown": "#4a5a7a",
 }
+
+_MONO = "'JetBrains Mono', 'IBM Plex Mono', monospace"
 
 _BASE_LAYOUT = dict(
     template="plotly_dark",
-    margin=dict(l=20, r=20, t=40, b=20),
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#e0e0e0"),
-    legend=dict(bgcolor="rgba(0,0,0,0)"),
+    margin=dict(l=12, r=12, t=36, b=12),
+    paper_bgcolor="#0d1220",
+    plot_bgcolor="#0d1220",
+    font=dict(family=_MONO, color="#8a9ab8", size=11),
+    title_font=dict(family="Inter, sans-serif", color="#c9d1e0", size=13),
+    legend=dict(
+        bgcolor="rgba(0,0,0,0)",
+        font=dict(family=_MONO, size=10),
+        borderwidth=0,
+    ),
+    hovermode="x unified",
+    hoverlabel=dict(
+        bgcolor="#111827",
+        bordercolor="#1c2a3a",
+        font=dict(family=_MONO, size=11, color="#c9d1e0"),
+    ),
 )
 
 
@@ -105,8 +118,10 @@ def equity_curve(
         )
     )
 
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
-    fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
+    fig.update_xaxes(showgrid=True, gridcolor="#131d2e", zeroline=False,
+                     tickfont=dict(family=_MONO, size=10), linecolor="#1c2a3a")
+    fig.update_yaxes(showgrid=True, gridcolor="#131d2e", zeroline=False,
+                     tickfont=dict(family=_MONO, size=10), linecolor="#1c2a3a")
     return fig
 
 
@@ -141,10 +156,13 @@ def drawdown_chart(
     )
 
     # Horizontal zero line
-    fig.add_hline(y=0, line_color="rgba(255,255,255,0.3)", line_width=1)
+    fig.add_hline(y=0, line_color="#1c2a3a", line_width=1)
 
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
-    fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)", ticksuffix="%")
+    fig.update_xaxes(showgrid=True, gridcolor="#131d2e", zeroline=False,
+                     tickfont=dict(family=_MONO, size=10), linecolor="#1c2a3a")
+    fig.update_yaxes(showgrid=True, gridcolor="#131d2e", zeroline=False,
+                     tickfont=dict(family=_MONO, size=10), linecolor="#1c2a3a",
+                     ticksuffix="%")
     return fig
 
 
@@ -235,8 +253,8 @@ def bar_metrics(
         )
     )
 
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
-    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=True, gridcolor="#131d2e", tickfont=dict(family=_MONO, size=10))
+    fig.update_yaxes(showgrid=False, tickfont=dict(family=_MONO, size=10))
     return fig
 
 
@@ -307,8 +325,10 @@ def regime_timeline(
         tickvals=list(range(len(regime_order))),
         ticktext=regime_order,
         showgrid=False,
+        tickfont=dict(family=_MONO, size=10),
     )
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
+    fig.update_xaxes(showgrid=True, gridcolor="#131d2e",
+                     tickfont=dict(family=_MONO, size=10))
     return fig
 
 
