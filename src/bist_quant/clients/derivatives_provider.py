@@ -21,9 +21,21 @@ logger = logging.getLogger(__name__)
 class DerivativesProvider:
     """Resilient accessor for VIOP futures/options datasets."""
 
-    def __init__(self, borsapy_module: Any | None = None) -> None:
+    def __init__(
+        self,
+        borsapy_module: Any | None = None,
+        cache_dir: Any = None,
+    ) -> None:
         self._bp = borsapy_module
         self._import_attempted = borsapy_module is not None
+        self._disk_cache: Any | None = None
+        if cache_dir is not None:
+            try:
+                from pathlib import Path as _Path
+                from bist_quant.common.disk_cache import DiskCache
+                self._disk_cache = DiskCache(_Path(cache_dir))
+            except Exception:
+                pass
 
     def _get_bp(self) -> Any | None:
         if self._bp is not None:
@@ -371,6 +383,10 @@ class DerivativesProvider:
 
     def get_futures(self) -> pd.DataFrame:
         """All active futures contracts."""
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_dataframe("derivatives", "futures")
+            if _cached is not None:
+                return _cached
         frame = self._all_contracts_frame()
         if frame.empty:
             return pd.DataFrame()
@@ -379,10 +395,17 @@ class DerivativesProvider:
         futures = [record for record in records if self._is_futures_record(record)]
         if not futures:
             return pd.DataFrame()
-        return pd.DataFrame(futures).drop_duplicates().reset_index(drop=True)
+        _result = pd.DataFrame(futures).drop_duplicates().reset_index(drop=True)
+        if self._disk_cache is not None and not _result.empty:
+            self._disk_cache.set_dataframe("derivatives", "futures", _result)
+        return _result
 
     def get_options(self) -> pd.DataFrame:
         """All active options."""
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_dataframe("derivatives", "options")
+            if _cached is not None:
+                return _cached
         frame = self._all_contracts_frame()
         if frame.empty:
             return pd.DataFrame()
@@ -391,7 +414,10 @@ class DerivativesProvider:
         options = [record for record in records if self._is_option_record(record)]
         if not options:
             return pd.DataFrame()
-        return pd.DataFrame(options).drop_duplicates().reset_index(drop=True)
+        _result = pd.DataFrame(options).drop_duplicates().reset_index(drop=True)
+        if self._disk_cache is not None and not _result.empty:
+            self._disk_cache.set_dataframe("derivatives", "options", _result)
+        return _result
 
     def get_contracts(self, base_symbol: str) -> list[dict]:
         """Available contracts for a base symbol (e.g., XU030D)."""

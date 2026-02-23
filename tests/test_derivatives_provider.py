@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from bist_quant.common.derivatives_provider import DerivativesProvider
+from bist_quant.clients.derivatives_provider import DerivativesProvider
 
 
 _CONTRACTS: list[dict[str, Any]] = [

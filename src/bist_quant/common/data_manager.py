@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +11,8 @@ import pandas as pd
 from bist_quant.common.enums import RegimeLabel
 
 logger = logging.getLogger(__name__)
+
+
 @dataclass
 class LoadedMarketData:
     prices: pd.DataFrame
@@ -23,6 +24,120 @@ class LoadedMarketData:
     regime_allocations: dict[RegimeLabel, float]
     xautry_prices: pd.Series
     xu100_prices: pd.Series
+
+
+def _newest_mtime(directory: Path, glob_pattern: str) -> float:
+    """Return the most recent mtime among files matching *glob_pattern*."""
+    newest = 0.0
+    for path in directory.glob(glob_pattern):
+        try:
+            mt = path.stat().st_mtime
+            if mt > newest:
+                newest = mt
+        except OSError:
+            continue
+    return newest
+
+
+def build_consolidated_prices_panel(
+    cache_dir: Path,
+    output_path: Path | None = None,
+    *,
+    force: bool = False,
+    pattern: str = "*_max_1d.parquet",
+) -> Path:
+    """Build a single consolidated prices parquet from per-ticker cache files.
+
+    The panel is written to *output_path* (default: ``cache_dir/../panels/prices_panel.parquet``).
+    If the panel already exists and is newer than every source file, this is a no-op
+    unless *force* is True.
+
+    Returns the path to the consolidated panel.
+    """
+    prices_dir = cache_dir / "prices"
+    if output_path is None:
+        panels_dir = cache_dir / "panels"
+        panels_dir.mkdir(parents=True, exist_ok=True)
+        output_path = panels_dir / "prices_panel.parquet"
+
+    # ── Staleness check ──────────────────────────────────────────────────
+    if not force and output_path.exists():
+        panel_mtime = output_path.stat().st_mtime
+        source_mtime = _newest_mtime(prices_dir, pattern)
+        if source_mtime > 0 and panel_mtime >= source_mtime:
+            panel_size = output_path.stat().st_size
+            # Also check that the panel isn't suspiciously small (< 100 KB)
+            if panel_size > 100_000:
+                logger.info(
+                    "  ⚡ Consolidated prices panel is up-to-date (%d KB), skipping rebuild",
+                    panel_size // 1024,
+                )
+                return output_path
+
+    # ── Rebuild ──────────────────────────────────────────────────────────
+    t0 = time.time()
+    source_files = sorted(prices_dir.glob(pattern))
+    if not source_files:
+        raise FileNotFoundError(
+            f"No price files matching '{pattern}' found in {prices_dir}. "
+            "Run the fetch pipeline to populate borsapy_cache."
+        )
+
+    frames: list[pd.DataFrame] = []
+    skipped = 0
+    for path in source_files:
+        try:
+            df = pd.read_parquet(path)
+            if df.empty:
+                skipped += 1
+                continue
+            # Normalize index: strip timezone, rename to Date column
+            if isinstance(df.index, pd.DatetimeIndex):
+                idx = df.index.tz_localize(None) if df.index.tz else df.index
+                df.index = idx.floor("D")
+                df = df.reset_index()
+                if df.columns[0] != "Date":
+                    df = df.rename(columns={df.columns[0]: "Date"})
+            # Ensure Ticker column
+            if "Ticker" not in df.columns:
+                ticker = path.stem.split("_")[0]
+                df["Ticker"] = ticker
+            frames.append(df)
+        except Exception as exc:
+            logger.debug("  Skipping %s: %s", path.name, exc)
+            skipped += 1
+
+    if not frames:
+        raise ValueError("All price files were empty or unreadable.")
+
+    panel = pd.concat(frames, ignore_index=True)
+
+    # Ensure standard column order
+    standard_cols = ["Date", "Ticker", "Open", "High", "Low", "Close", "Volume"]
+    available = [c for c in standard_cols if c in panel.columns]
+    extra = [c for c in panel.columns if c not in standard_cols]
+    panel = panel[available + extra]
+
+    # Coerce Date
+    panel["Date"] = pd.to_datetime(panel["Date"], errors="coerce")
+    panel = panel.dropna(subset=["Date"]).sort_values(["Ticker", "Date"]).reset_index(drop=True)
+
+    # Write
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    panel.to_parquet(output_path, index=False)
+
+    elapsed = time.time() - t0
+    logger.info(
+        "  ✅ Built consolidated prices panel: %d rows × %d tickers in %.1fs (%d KB)",
+        len(panel),
+        panel["Ticker"].nunique(),
+        elapsed,
+        output_path.stat().st_size // 1024,
+    )
+    if skipped:
+        logger.info("     (%d files skipped due to errors)", skipped)
+
+    return output_path
 
 
 class DataManager:
@@ -42,6 +157,19 @@ class DataManager:
     def clear_cache(self) -> None:
         self._cache = None
 
+    def _ensure_consolidated_panel(self) -> Path | None:
+        """Build or refresh the consolidated prices panel if per-ticker files exist."""
+        from bist_quant.common.data_paths import get_data_paths
+        _paths = get_data_paths()
+        prices_dir = _paths.borsapy_cache_dir / "prices"
+        if not prices_dir.exists() or not any(prices_dir.glob("*_max_1d.parquet")):
+            return None
+        try:
+            return build_consolidated_prices_panel(_paths.borsapy_cache_dir)
+        except Exception as exc:
+            logger.warning("  ⚠️  Failed to build consolidated panel: %s", exc)
+            return None
+
     def load_all(self, use_cache: bool = True) -> LoadedMarketData:
         if use_cache and self._cache is not None:
             return self._cache
@@ -52,26 +180,35 @@ class DataManager:
 
         start_time = time.time()
 
-        prices_file = self.data_dir / "bist_prices_full.csv"
-        
-        # Auto-fetch detection logic
-        if not prices_file.exists():
-            logger.warning("⚠️  Price data missing. Attempting to automatically fetch via yfinance pipeline...")
-            script_path = self.data_dir.parent / "scripts" / "run_fetch_pipeline.sh"
-            if script_path.exists():
-                try:
-                    subprocess.run(["bash", str(script_path), "--source", "yfinance"], check=True)
-                    logger.info("✅ Auto-fetch pipeline completed successfully.")
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"❌ Auto-fetch pipeline failed: {e}")
-                    raise ValueError(f"Price data not available and auto-fetch failed: {prices_file}")
-            else:
-                logger.error(f"❌ Auto-fetch script not found at target: {script_path}")
-                raise ValueError(f"Price data not available from {prices_file}")
-            
-        prices = self.loader.load_prices(prices_file)
+        from bist_quant.common.data_paths import get_data_paths
+        _paths = get_data_paths()
+
+        # ── Ensure consolidated panel is fresh ───────────────────────────
+        panel_path = self._ensure_consolidated_panel()
+
+        # ── Load prices ──────────────────────────────────────────────────
+        # If a fresh consolidated panel exists, load it directly for speed.
+        # Otherwise fall back to the DataLoader's normal path.
+        if panel_path is not None and panel_path.exists() and panel_path.stat().st_size > 100_000:
+            logger.info("  ⚡ Loading from consolidated prices panel...")
+            prices = pd.read_parquet(panel_path)
+            if "Date" in prices.columns:
+                prices["Date"] = pd.to_datetime(prices["Date"], errors="coerce").dt.floor("D")
+            # Cache inside DataLoader so other methods can reuse it
+            if self.loader._prices is None:
+                self.loader._prices = prices
+            logger.info(
+                "  ✅ Loaded %d price records from consolidated panel",
+                len(prices),
+            )
+        else:
+            prices = self.loader.load_prices()
+
         if prices is None or prices.empty:
-            raise ValueError(f"Price data could not be loaded from {prices_file}")
+            raise ValueError(
+                "Price data could not be loaded. "
+                "Run the fetch pipeline to populate borsapy_cache."
+            )
 
         close_df = self.loader.build_close_panel(prices)
         open_df = self.loader.build_open_panel(prices)
@@ -96,10 +233,10 @@ class DataManager:
             regime_allocations = self.base_regime_allocations.copy()
             logger.info("  ℹ️  Using fallback regime allocations from portfolio_engine constants.")
 
-        xautry_file = self.data_dir / "xau_try_2013_2026.csv"
+        xautry_file = _paths.usdtry_file
         xautry_prices = self.loader.load_xautry_prices(xautry_file)
 
-        xu100_file = self.data_dir / "xu100_prices.csv"
+        xu100_file = _paths.xu100_prices
         xu100_prices = self.loader.load_xu100_prices(xu100_file)
 
         loaded_data = LoadedMarketData(

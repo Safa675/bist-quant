@@ -23,9 +23,21 @@ DEFAULT_FALLBACK_RISK_FREE_RATE = 0.28
 class FixedIncomeProvider:
     """Resilient accessor for fixed income and central bank datasets."""
 
-    def __init__(self, borsapy_module: Any | None = None) -> None:
+    def __init__(
+        self,
+        borsapy_module: Any | None = None,
+        cache_dir: Any = None,
+    ) -> None:
         self._bp = borsapy_module
         self._import_attempted = borsapy_module is not None
+        self._disk_cache: Any | None = None
+        if cache_dir is not None:
+            try:
+                from pathlib import Path as _Path
+                from bist_quant.common.disk_cache import DiskCache
+                self._disk_cache = DiskCache(_Path(cache_dir))
+            except Exception:
+                pass
 
     def _get_bp(self) -> Any | None:
         if self._bp is not None:
@@ -238,6 +250,10 @@ class FixedIncomeProvider:
         Example:
             {"2Y": 26.42, "5Y": 27.15, "10Y": 28.03}
         """
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_json("fixed_income", "bond_yields")
+            if _cached is not None:
+                return _cached
         bp = self._get_bp()
         if bp is None:
             return {}
@@ -270,7 +286,10 @@ class FixedIncomeProvider:
             if risk_free is not None:
                 points["10Y"] = float(risk_free)
 
-        return {k: points[k] for k in self._sort_maturity_keys(list(points.keys()))}
+        _result = {k: points[k] for k in self._sort_maturity_keys(list(points.keys()))}
+        if self._disk_cache is not None and _result:
+            self._disk_cache.set_json("fixed_income", "bond_yields", _result)
+        return _result
 
     def get_risk_free_rate(self) -> float:
         """Return annual risk-free rate as decimal (e.g. 0.2803)."""

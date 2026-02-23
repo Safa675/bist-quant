@@ -42,6 +42,7 @@ class FXCommoditiesClient:
         cache_ttl: int = 60,
         enhanced_provider: FXEnhancedProvider | None = None,
         include_bank_rates: bool = True,
+        cache_dir: Any = None,
     ):
         self._mcp_endpoint = mcp_endpoint
         self._session = httpx.AsyncClient(timeout=timeout)
@@ -49,6 +50,14 @@ class FXCommoditiesClient:
         self._cache_ttl = cache_ttl
         self._enhanced_provider = enhanced_provider or FXEnhancedProvider()
         self._include_bank_rates = include_bank_rates
+        self._disk_cache: Any | None = None
+        if cache_dir is not None:
+            try:
+                from pathlib import Path as _Path
+                from bist_quant.common.disk_cache import DiskCache as _DiskCache
+                self._disk_cache = _DiskCache(_Path(cache_dir))
+            except Exception:
+                pass
 
     async def get_fx_rates(self, pairs: Optional[List[str]] = None) -> pd.DataFrame:
         """Get FX rates for given pairs or all available."""
@@ -563,6 +572,10 @@ class FXCommoditiesClient:
         return pd.concat(frames, ignore_index=True, sort=False)
 
     def _cache_get(self, key: str) -> Optional[pd.DataFrame]:
+        if self._disk_cache is not None:
+            _disk = self._disk_cache.get_dataframe("commodities", key)
+            if _disk is not None:
+                return _disk
         item = self._cache.get(key)
         if not item:
             return None
@@ -575,6 +588,8 @@ class FXCommoditiesClient:
 
     def _cache_set(self, key: str, value: pd.DataFrame) -> None:
         self._cache[key] = (value.copy(), datetime.now().timestamp())
+        if self._disk_cache is not None and not value.empty:
+            self._disk_cache.set_dataframe("commodities", key, value)
 
     @staticmethod
     def _normalize_pair(pair: str) -> str:

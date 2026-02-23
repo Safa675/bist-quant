@@ -72,9 +72,11 @@ def _resolve_regime_dir(project_root: Path, explicit_regime_dir: Path | None) ->
         return explicit_regime_dir
 
     candidates = [
+        project_root / "outputs" / "regime" / "simple_regime",
+        project_root / "outputs" / "regime",
+        project_root / "regime_filter",
         project_root / "Regime Filter",
         project_root / "Simple Regime Filter",
-        project_root / "regime_filter",
     ]
     for candidate in candidates:
         if candidate.exists():

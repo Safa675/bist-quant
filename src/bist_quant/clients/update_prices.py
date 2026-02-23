@@ -23,6 +23,7 @@ Schedule with cron (every weekday at 18:45 Istanbul time):
 import logging
 import argparse
 import datetime as dt
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -112,6 +113,83 @@ def _append_and_persist(
     combined.to_csv(existing_path, index=False)
     combined.to_parquet(parquet_path, index=False)
     return combined
+
+
+def _normalize_borsapy_xau(
+    xau_raw: pd.Series,
+    usd_try: pd.Series,
+    anchor_try: float | None = None,
+) -> tuple[pd.Series, pd.Series, int]:
+    """
+    Normalize borsapy ons-altin rows to consistent XAU_USD and XAU_TRY series.
+
+    borsapy payloads may mix quote units; this picks the smoother interpretation
+    row-by-row to avoid synthetic spikes.
+    """
+    work = pd.concat(
+        [
+            pd.to_numeric(xau_raw, errors="coerce").rename("XAU_RAW"),
+            pd.to_numeric(usd_try, errors="coerce").rename("USD_TRY"),
+        ],
+        axis=1,
+    ).dropna()
+
+    if work.empty:
+        return pd.Series(dtype=float), pd.Series(dtype=float), 0
+
+    prev = None
+    if anchor_try is not None and pd.notna(anchor_try):
+        try:
+            prev_val = float(anchor_try)
+            if prev_val > 0:
+                prev = prev_val
+        except (TypeError, ValueError):
+            prev = None
+
+    xau_try_vals: list[float] = []
+    xau_usd_vals: list[float] = []
+    converted_try_rows = 0
+
+    for row in work.itertuples(index=False):
+        raw = float(row.XAU_RAW)
+        fx = float(row.USD_TRY)
+        try_quote = raw
+        usd_quote = raw * fx
+
+        # Heuristic 1: very large raw ons-altin values are TRY-quoted.
+        prefer_try_quote = raw >= 20_000.0
+
+        # Heuristic 2: otherwise choose the interpretation closer to prior level.
+        if not prefer_try_quote and prev is not None and prev > 0 and try_quote > 0 and usd_quote > 0:
+            direct_jump = abs(math.log(try_quote / prev))
+            multiplied_jump = abs(math.log(usd_quote / prev))
+            prefer_try_quote = direct_jump < multiplied_jump
+
+        chosen_try = try_quote if prefer_try_quote else usd_quote
+        alt_try = usd_quote if prefer_try_quote else try_quote
+
+        # Safety net against >400% synthetic jumps when an alternative exists.
+        if prev is not None and prev > 0 and chosen_try > 0 and alt_try > 0:
+            chosen_jump = abs(chosen_try / prev - 1.0)
+            alt_jump = abs(alt_try / prev - 1.0)
+            if chosen_jump > 4.0 and alt_jump < 2.0:
+                chosen_try = alt_try
+                prefer_try_quote = not prefer_try_quote
+
+        if prefer_try_quote:
+            converted_try_rows += 1
+
+        xau_try_vals.append(chosen_try)
+        xau_usd_vals.append(chosen_try / fx if fx > 0 else float("nan"))
+        if chosen_try > 0:
+            prev = chosen_try
+
+    index = work.index
+    return (
+        pd.Series(xau_usd_vals, index=index, name="XAU_USD"),
+        pd.Series(xau_try_vals, index=index, name="XAU_TRY"),
+        converted_try_rows,
+    )
 
 
 def _fallback_bist_tickers_from_existing() -> list[str]:
@@ -372,6 +450,17 @@ def update_xau_try(dry_run: bool = False, source: str = "auto") -> None:
         logger.info("  Already up to date.")
         return
 
+    anchor_try: float | None = None
+    try:
+        anchor_df = pd.read_csv(XAU_TRY_PRICES, usecols=["Date", "XAU_TRY"], parse_dates=["Date"])
+        anchor_df = anchor_df.dropna(subset=["XAU_TRY"]).sort_values("Date")
+        if not anchor_df.empty:
+            anchor_try = float(anchor_df["XAU_TRY"].iloc[-1])
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        logger.info(f"  Warning: could not read XAU anchor value: {exc}")
+
     use_borsapy = _wants_borsapy(source)
     if dry_run:
         provider = "borsapy" if use_borsapy else "yfinance"
@@ -387,13 +476,23 @@ def update_xau_try(dry_run: bool = False, source: str = "auto") -> None:
             xau = xau_hist["Close"] if xau_hist is not None and not xau_hist.empty else pd.Series(dtype=float)
             usd_try = usd_hist["Close"] if usd_hist is not None and not usd_hist.empty else pd.Series(dtype=float)
 
-            new_df = pd.concat([xau, usd_try], axis=1)
-            new_df.columns = ["XAU_USD", "USD_TRY"]
-            new_df["XAU_TRY"] = new_df["XAU_USD"] * new_df["USD_TRY"]
+            raw = pd.concat([xau, usd_try], axis=1)
+            raw.columns = ["XAU_RAW", "USD_TRY"]
+            xau_usd, xau_try, converted_try_rows = _normalize_borsapy_xau(
+                xau_raw=raw["XAU_RAW"],
+                usd_try=raw["USD_TRY"],
+                anchor_try=anchor_try,
+            )
+            new_df = pd.concat([xau_usd, raw["USD_TRY"], xau_try], axis=1)
             new_df = new_df.dropna()
             new_df.index.name = "Date"
             if not new_df.empty:
                 logger.info("  Data source      : borsapy")
+                if converted_try_rows > 0:
+                    logger.info(
+                        "  Unit normalization: treated %d rows as TRY-quoted ons-altin",
+                        converted_try_rows,
+                    )
         except Exception as exc:
             if source == "borsapy":
                 raise

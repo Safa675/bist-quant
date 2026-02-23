@@ -8,8 +8,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from bist_quant.common.economic_calendar_provider import EconomicCalendarProvider
-from bist_quant.common.macro_adapter import MacroAdapter
+from bist_quant.clients.economic_calendar_provider import EconomicCalendarProvider
+from bist_quant.clients.macro_adapter import MacroAdapter
 from bist_quant.regime.macro_features import MacroConfig, MacroFeatures
 
 

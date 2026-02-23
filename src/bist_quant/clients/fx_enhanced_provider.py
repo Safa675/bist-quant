@@ -103,9 +103,21 @@ class FXEnhancedProvider:
         "platinum": "gram-platin",
     }
 
-    def __init__(self, borsapy_module: Any | None = None) -> None:
+    def __init__(
+        self,
+        borsapy_module: Any | None = None,
+        cache_dir: Any = None,
+    ) -> None:
         self._bp = borsapy_module
         self._import_attempted = borsapy_module is not None
+        self._disk_cache: Any | None = None
+        if cache_dir is not None:
+            try:
+                from pathlib import Path as _Path
+                from bist_quant.common.disk_cache import DiskCache
+                self._disk_cache = DiskCache(_Path(cache_dir))
+            except Exception:
+                pass
 
     def _get_bp(self) -> Any | None:
         if self._bp is not None:
@@ -393,6 +405,11 @@ class FXEnhancedProvider:
 
     def get_bank_rates(self, currency: str = "USD") -> pd.DataFrame:
         """All bank buying/selling rates for a currency."""
+        _key = f"bank_rates_{currency.lower()}"
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_dataframe("fx", _key)
+            if _cached is not None:
+                return _cached
         bp = self._get_bp()
         if bp is None:
             return self._empty_bank_rates()
@@ -415,10 +432,18 @@ class FXEnhancedProvider:
             )
             return self._empty_bank_rates()
 
-        return self._normalize_bank_frame(self._as_frame(payload), normalized_currency)
+        _result = self._normalize_bank_frame(self._as_frame(payload), normalized_currency)
+        if self._disk_cache is not None and not _result.empty:
+            self._disk_cache.set_dataframe("fx", _key, _result)
+        return _result
 
     def get_institution_rates(self, asset: str = "gram-altin") -> pd.DataFrame:
         """Gold/silver institution rates (kuyumcular + banks)."""
+        _key = f"institution_rates_{asset.replace('-', '_').lower()}"
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_dataframe("fx", _key)
+            if _cached is not None:
+                return _cached
         bp = self._get_bp()
         if bp is None:
             return self._empty_institution_rates()
@@ -441,7 +466,10 @@ class FXEnhancedProvider:
             )
             return self._empty_institution_rates()
 
-        return self._normalize_institution_frame(self._as_frame(payload), normalized_asset)
+        _result = self._normalize_institution_frame(self._as_frame(payload), normalized_asset)
+        if self._disk_cache is not None and not _result.empty:
+            self._disk_cache.set_dataframe("fx", _key, _result)
+        return _result
 
     def get_intraday(
         self,
@@ -450,6 +478,11 @@ class FXEnhancedProvider:
         period: str = "5d",
     ) -> pd.DataFrame:
         """Intraday FX history via TradingView-backed borsapy FX.history()."""
+        _key = f"intraday_{currency.lower()}_{interval}_{period}"
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_dataframe("fx", _key)
+            if _cached is not None:
+                return _cached
         bp = self._get_bp()
         if bp is None:
             return self._empty_intraday()
@@ -481,12 +514,15 @@ class FXEnhancedProvider:
             )
             return self._empty_intraday()
 
-        return self._normalize_intraday_frame(
+        _result = self._normalize_intraday_frame(
             self._as_frame(payload),
             asset=normalized_asset,
             interval=interval,
             period=period,
         )
+        if self._disk_cache is not None and not _result.empty:
+            self._disk_cache.set_dataframe("fx", _key, _result)
+        return _result
 
     def get_carry_spread(self) -> dict[str, Any]:
         """Bank buy/sell spread summary as a simple carry-trade proxy."""

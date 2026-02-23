@@ -1,57 +1,69 @@
 # BIST Quant
 
-**BIST Quant** is a quantitative finance library for Python, designed for backtesting and analysis on BIST (Borsa Istanbul) and multi-asset markets.
+**Quantitative research and backtesting library for Borsa Istanbul (BIST).** Version 0.3.0.
 
-## Features
+Covers the full stack from raw data ingestion through signal construction, event-loop backtesting, professional analytics, realtime quotes, and API-ready services.
 
-- **74+ signal builders** for momentum, value, quality, volatility, and technical indicators
-- **Backtesting engine** with vectorized execution and realistic constraints
-- **Portfolio tools** for allocation and optimization workflows
-- **Risk controls** including VaR, CVaR, max drawdown, and position sizing helpers
-- **Multi-asset support** across BIST, crypto, US stocks, FX, commodities, and funds
-- **Performance-focused stack** with NumPy and pandas
-- **Extensible architecture** for custom signal and strategy research
+## What's Inside
+
+- **40+ signal builders** — momentum, value, quality, technical, and composite multi-factor strategies
+- **Event-loop backtester** — day-by-day with monthly/quarterly rebalancing, regime filter, vol-targeting, stop-loss, and realistic slippage
+- **Fundamentals pipeline** — automated fetch → validate → merge → freshness-gate cycle for Turkish financial statements
+- **Regime classifier** — 2D (trend × volatility) model producing Bull / Bear / Recovery / Stress labels for BIST XU100
+- **Professional analytics** — GARCH volatility, walk-forward analysis, Monte Carlo, Kelly sizing, factor exposure, compliance checks
+- **Realtime quotes** — TradingView streaming overlay with borsapy polling fallback
+- **Multi-asset data** — borsapy (BIST), Borsa MCP (crypto, US stocks, TEFAS funds), FX, gold, derivatives, fixed income
+- **Job system** — async job queue with progress pub/sub for long-running tasks
 
 ## Installation
 
 ```bash
-pip install bist-quant
-```
-
-For optional integrations:
-
-```bash
-pip install bist-quant[full]
+git clone https://github.com/Safa675/bist-quant.git
+cd BIST
+pip install -e ".[dev]"
 ```
 
 ## Quick Example
 
 ```python
-from bist_quant import PortfolioEngine
+from bist_quant import PortfolioEngine, DataLoader, DataPaths
 
-engine = PortfolioEngine(options={
-    "signal": "momentum",
-    "lookback_period": 21,
-    "top_n": 10,
-})
+paths = DataPaths()                    # auto-detects data/ from project root
+loader = DataLoader(data_paths=paths)
+engine = PortfolioEngine(loader=loader)
 
-result = engine.run_backtest(
-    signals=["momentum"],
-    start_date="2023-01-01",
-    end_date="2023-12-31",
-)
-
-print(f"Sharpe Ratio: {result.metrics.get('sharpe', 0.0):.2f}")
-print(f"Total Return: {result.metrics.get('total_return', 0.0):.2%}")
+result = engine.run_factor("momentum")  # runs full backtest
+print(f"Sharpe: {result.metrics['sharpe']:.2f}")
+print(f"CAGR:   {result.metrics['cagr']:.1%}")
 ```
 
 ## Documentation
 
-- [Getting Started](getting-started/installation.md)
-- [User Guide](user-guide/signals.md)
-- [API Reference](api-reference/core.md)
+- [Installation & Setup](getting-started/installation.md)
+- [Quick Start](getting-started/quickstart.md)
+- [Configuration](getting-started/configuration.md)
+- [Signals Guide](user-guide/signals.md)
+- [Backtesting Guide](user-guide/backtesting.md)
+- [Portfolio & Risk](user-guide/portfolio.md)
+- [Multi-Asset Data](user-guide/multi-asset.md)
 - [Examples](examples/basic-backtest.md)
+- [Contributing](contributing.md)
+
+## Source Code Documentation
+
+Every folder under `src/bist_quant/` has a `README.md` with file-level API reference and local rules:
+
+| Module | README |
+|---|---|
+| Core package | [src/bist_quant/README.md](../src/bist_quant/README.md) |
+| Analytics | [src/bist_quant/analytics/README.md](../src/bist_quant/analytics/README.md) |
+| Clients | [src/bist_quant/clients/README.md](../src/bist_quant/clients/README.md) |
+| Common | [src/bist_quant/common/README.md](../src/bist_quant/common/README.md) |
+| Data Pipeline | [src/bist_quant/data_pipeline/README.md](../src/bist_quant/data_pipeline/README.md) |
+| Engines | [src/bist_quant/engines/README.md](../src/bist_quant/engines/README.md) |
+| Regime | [src/bist_quant/regime/README.md](../src/bist_quant/regime/README.md) |
+| Signals | [src/bist_quant/signals/README.md](../src/bist_quant/signals/README.md) |
 
 ## License
 
-MIT License. See [LICENSE](https://github.com/Safa675/BIST/blob/main/LICENSE).
+MIT — see [LICENSE](https://github.com/Safa675/bist-quant/blob/main/LICENSE).

@@ -697,12 +697,18 @@ with result_col:
             with t1:
                 st.markdown("**Top 10 ROE**")
                 if "roe" in df_view.columns:
-                    top_roe = df_view[["symbol", "sector", "roe", "net_margin"]].dropna(subset=["roe"]).nlargest(10, "roe")
+                    top_roe = df_view[["symbol", "sector", "roe", "net_margin"]].copy()
+                    top_roe["roe"] = pd.to_numeric(top_roe["roe"], errors="coerce")
+                    top_roe["net_margin"] = pd.to_numeric(top_roe["net_margin"], errors="coerce")
+                    top_roe = top_roe.dropna(subset=["roe"]).nlargest(10, "roe")
                     st.dataframe(top_roe.round(1), use_container_width=True, hide_index=True)
             with t2:
                 st.markdown("**Lowest P/E (positive only)**")
                 if "pe" in df_view.columns:
-                    low_pe = df_view[["symbol", "sector", "pe", "roe"]].dropna(subset=["pe"])
+                    low_pe = df_view[["symbol", "sector", "pe", "roe"]].copy()
+                    low_pe["pe"] = pd.to_numeric(low_pe["pe"], errors="coerce")
+                    low_pe["roe"] = pd.to_numeric(low_pe["roe"], errors="coerce")
+                    low_pe = low_pe.dropna(subset=["pe"])
                     low_pe = low_pe[low_pe["pe"] > 0].nsmallest(10, "pe")
                     st.dataframe(low_pe.round(1), use_container_width=True, hide_index=True)
 

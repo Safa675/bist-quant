@@ -39,11 +39,20 @@ class USStockClient:
         mcp_endpoint: str = "https://borsamcp.fastmcp.app/mcp",
         timeout: float = 15.0,
         cache_ttl: int = 300,
+        cache_dir: Any = None,
     ):
         self._mcp_endpoint = mcp_endpoint
         self._session = httpx.AsyncClient(timeout=timeout)
         self._cache: Dict[str, tuple[pd.DataFrame, float]] = {}
         self._cache_ttl = cache_ttl
+        self._disk_cache: Any | None = None
+        if cache_dir is not None:
+            try:
+                from pathlib import Path as _Path
+                from bist_quant.common.disk_cache import DiskCache as _DiskCache
+                self._disk_cache = _DiskCache(_Path(cache_dir))
+            except Exception:
+                pass
 
     async def search_us_stocks(self, query: str) -> pd.DataFrame:
         """Search US stocks by symbol/company name."""
@@ -489,6 +498,10 @@ class USStockClient:
         return texts
 
     def _cache_get(self, key: str) -> Optional[pd.DataFrame]:
+        if self._disk_cache is not None:
+            _disk = self._disk_cache.get_dataframe("us_stocks", key)
+            if _disk is not None:
+                return _disk
         item = self._cache.get(key)
         if not item:
             return None
@@ -501,6 +514,8 @@ class USStockClient:
 
     def _cache_set(self, key: str, value: pd.DataFrame) -> None:
         self._cache[key] = (value.copy(), datetime.now().timestamp())
+        if self._disk_cache is not None and not value.empty:
+            self._disk_cache.set_dataframe("us_stocks", key, value)
 
     @staticmethod
     def _to_float(value: Any, default: float = 0.0) -> float:

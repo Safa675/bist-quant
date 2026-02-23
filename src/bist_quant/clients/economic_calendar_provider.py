@@ -34,10 +34,19 @@ class EconomicCalendarProvider:
         self,
         borsapy_module: Any | None = None,
         now_fn: Callable[[], datetime] | None = None,
+        cache_dir: Any = None,
     ) -> None:
         self._bp = borsapy_module
         self._import_attempted = borsapy_module is not None
         self._now = now_fn or datetime.now
+        self._disk_cache: Any | None = None
+        if cache_dir is not None:
+            try:
+                from pathlib import Path as _Path
+                from bist_quant.common.disk_cache import DiskCache
+                self._disk_cache = DiskCache(_Path(cache_dir))
+            except Exception:
+                pass
 
     def _get_bp(self) -> Any | None:
         if self._bp is not None:
@@ -245,6 +254,12 @@ class EconomicCalendarProvider:
         Returns canonical columns:
         Date, Time, Country, Importance, Event, Forecast, Previous.
         """
+        _country_key = str(sorted(country) if isinstance(country, list) else (country or "all")).lower()
+        _cache_key = f"events_{period}_{_country_key}_{importance or 'all'}"
+        if self._disk_cache is not None:
+            _cached = self._disk_cache.get_dataframe("calendar", _cache_key)
+            if _cached is not None:
+                return _cached
         bp = self._get_bp()
         if bp is None:
             return self._empty_events()
@@ -298,7 +313,10 @@ class EconomicCalendarProvider:
         if not event_dt.empty:
             events = events.assign(_event_dt=event_dt)
             events = events.sort_values("_event_dt").drop(columns="_event_dt")
-        return events.reset_index(drop=True)
+        _result = events.reset_index(drop=True)
+        if self._disk_cache is not None and not _result.empty:
+            self._disk_cache.set_dataframe("calendar", _cache_key, _result)
+        return _result
 
     def get_high_impact_events(self, days_ahead: int = 7) -> pd.DataFrame:
         """High-importance events in the next N days."""

@@ -28,11 +28,17 @@ def _load_module_from_path(module_name: str, module_path: Path) -> ModuleType:
 class MacroAdapter:
     """Encapsulates macro-events related DataLoader integrations."""
 
-    def __init__(self, loader: "DataLoader", macro_events_path: Path) -> None:
+    def __init__(
+        self,
+        loader: "DataLoader",
+        macro_events_path: Path,
+        cache_dir: Any = None,
+    ) -> None:
         self._loader = loader
         self._macro_events_path = macro_events_path
         self._client: Any | None = None
         self._economic_calendar_provider: EconomicCalendarProvider | None = None
+        self._cache_dir = cache_dir
 
     @staticmethod
     def _period_from_days(days_ahead: int) -> str:
@@ -47,7 +53,9 @@ class MacroAdapter:
     @property
     def economic_calendar(self) -> EconomicCalendarProvider:
         if self._economic_calendar_provider is None:
-            self._economic_calendar_provider = EconomicCalendarProvider()
+            self._economic_calendar_provider = EconomicCalendarProvider(
+                cache_dir=self._cache_dir,
+            )
         return self._economic_calendar_provider
 
     @property

@@ -96,7 +96,7 @@ class DataPaths:
         self.regime_dir = (
             _get_env_path("BIST_REGIME_DIR")
             or explicit_regime
-            or (bist_root / "regime_filter" / "outputs")
+            or (bist_root / "outputs" / "regime" / "simple_regime")
         )
         self.cache_dir = (
             _get_env_path("BIST_CACHE_DIR")
@@ -110,12 +110,21 @@ class DataPaths:
 
     @property
     def prices_file(self) -> Path:
-        """Primary price data file (CSV)."""
+        """Primary price data file (Parquet preferred, CSV fallback)."""
+        cache = self.borsapy_cache_dir / "panels" / "prices_panel.parquet"
+        if cache.exists() and cache.stat().st_size > 100_000:
+            return cache
+        parquet = self.data_dir / "bist_prices_full.parquet"
+        if parquet.exists():
+            return parquet
         return self.data_dir / "bist_prices_full.csv"
 
     @property
     def prices_parquet(self) -> Path:
         """Primary price data file (Parquet)."""
+        cache = self.borsapy_cache_dir / "panels" / "prices_panel.parquet"
+        if cache.exists():
+            return cache
         return self.data_dir / "bist_prices_full.parquet"
 
     @property
@@ -125,7 +134,14 @@ class DataPaths:
 
     @property
     def xu100_prices(self) -> Path:
-        """XU100 index prices."""
+        """XU100 index prices, preferring the borsapy_cache."""
+        cache_pq = self.borsapy_cache_dir / "index_components" / "XU100.parquet"
+        if cache_pq.exists():
+            return cache_pq
+        cache_csv = self.borsapy_cache_dir / "index_components" / "XU100.csv"
+        if cache_csv.exists():
+            return cache_csv
+        
         parquet = self.data_dir / "xu100_prices.parquet"
         if parquet.exists():
             return parquet
@@ -192,12 +208,18 @@ class DataPaths:
 
     @property
     def usdtry_file(self) -> Path:
-        """USD/TRY exchange rate data."""
+        """USD/TRY exchange rate data (now sourced from gold cache)."""
+        cache = self.borsapy_cache_dir / "gold" / "xau_try_daily.parquet"
+        if cache.exists():
+            return cache
         return self.data_dir / "usdtry_data.csv"
 
     @property
     def gold_try_file(self) -> Path:
-        """Gold prices in TRY."""
+        """Gold prices in TRY (now sourced from gold cache)."""
+        cache = self.borsapy_cache_dir / "gold" / "xau_try_daily.parquet"
+        if cache.exists():
+            return cache
         return self.data_dir / "xau_try_2013_2026.csv"
 
     @property

@@ -107,7 +107,7 @@ def _hex_to_rgb(hex_color: str) -> str:
 for _key, _default in [
     ("fl_cat_filter",     "All"),
     ("fl_catalog",        None),
-    ("fl_selected",       []),
+    ("fl_multi_select",   []),
     ("fl_weights",        {}),
     ("fl_bt_future",      None),
     ("fl_bt_results",     None),
@@ -312,50 +312,34 @@ else:
 
                         b_col1, b_col2 = st.columns(2)
                         with b_col1:
-                            is_selected = signal_name in st.session_state["fl_selected"]
+                            _current_sel = list(st.session_state.get("fl_multi_select_widget", []))
+                            is_selected = signal_name in _current_sel
                             if is_selected:
                                 if st.button("✅ In Portfolio", key=f"add_{signal_name}", use_container_width=True):
-                                    st.session_state["fl_selected"].remove(signal_name)
+                                    _current_sel.remove(signal_name)
+                                    st.session_state["fl_multi_select_widget"] = _current_sel
                                     st.session_state["fl_weights"].pop(signal_name, None)
                                     st.rerun()
                             else:
                                 if st.button("➕ Add to Portfolio", key=f"add_{signal_name}", use_container_width=True):
-                                    st.session_state["fl_selected"].append(signal_name)
+                                    _current_sel.append(signal_name)
+                                    st.session_state["fl_multi_select_widget"] = _current_sel
                                     st.rerun()
 
                         with b_col2:
-                            is_qbt_loading = (
-                                st.session_state.get("fl_quick_signal") == signal_name
-                                and st.session_state.get("fl_quick_future") is not None
-                                and not st.session_state["fl_quick_future"].done()
-                            )
-                            if is_qbt_loading:
-                                st.button("⏳ Running…", key=f"qbt_{signal_name}", disabled=True, use_container_width=True)
-                            elif st.button("⚡ Quick Backtest", key=f"qbt_{signal_name}", use_container_width=True):
+                            if st.button("⚡ Quick Backtest", key=f"qbt_{signal_name}", use_container_width=True):
                                 if core is not None:
-                                    st.session_state["fl_quick_signal"] = signal_name
-                                    st.session_state["fl_quick_future"] = run_in_thread(
-                                        core.run_backtest,
-                                        factor_name=signal_name,
-                                        start_date="2019-01-01",
-                                        end_date="2024-12-31",
-                                    )
+                                    with st.spinner(f"Running Quick Backtest for {signal_name}..."):
+                                        try:
+                                            res = core.run_backtest(
+                                                factor_name=signal_name,
+                                                start_date="2019-01-01",
+                                                end_date="2024-12-31",
+                                            )
+                                            st.session_state["fl_quick_bt"][signal_name] = res
+                                        except Exception as exc:
+                                            st.session_state["fl_quick_bt"][signal_name] = {"error": str(exc)}
                                     st.rerun()
-
-# ── poll quick backtest future ────────────────────────────────────────────────
-_qf = st.session_state.get("fl_quick_future")
-if _qf is not None and _qf.done():
-    _sig = st.session_state.get("fl_quick_signal", "")
-    try:
-        st.session_state["fl_quick_bt"][_sig] = _qf.result()
-    except Exception as exc:
-        st.session_state["fl_quick_bt"][_sig] = {"error": str(exc)}
-    st.session_state["fl_quick_future"] = None
-    st.session_state["fl_quick_signal"] = None
-    st.rerun()
-elif _qf is not None and not _qf.done():
-    time.sleep(0.4)
-    st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — Multi-Factor Combination
@@ -372,11 +356,9 @@ with sel_col:
     selected = st.multiselect(
         "Choose signals to combine",
         options=all_signal_names,
-        default=st.session_state["fl_selected"],
         placeholder="Select 2+ signals…",
-        key="fl_multi_select",
+        key="fl_multi_select_widget",
     )
-    st.session_state["fl_selected"] = list(selected)
 
 with ctrl_col:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -465,18 +447,15 @@ if selected:
             )
         st.rerun()
 
-    # Poll combined future ─────────────────────────────────────────────────────
+    # Run combined future synchronously inside spinner ─────────────────────────
     _bf = st.session_state.get("fl_bt_future")
-    if _bf is not None and not _bf.done():
+    if _bf is not None:
         with st.spinner("Running combined backtest… ⏳"):
-            time.sleep(0.5)
-            st.rerun()
-    elif _bf is not None and _bf.done():
-        try:
-            st.session_state["fl_bt_results"] = _bf.result()
-        except Exception as exc:
-            st.session_state["fl_bt_results"] = {"error": str(exc)}
-        st.session_state["fl_bt_future"] = None
+            try:
+                st.session_state["fl_bt_results"] = _bf.result()
+            except Exception as exc:
+                st.session_state["fl_bt_results"] = {"error": str(exc)}
+            st.session_state["fl_bt_future"] = None
         st.rerun()
 
     # Poll individual futures ──────────────────────────────────────────────────
@@ -628,7 +607,13 @@ if _combined_res is not None:
     if isinstance(_combined_res, dict) and _combined_res.get("error"):
         st.error(f"Combination error: {_combined_res['error']}")
     elif isinstance(_combined_res, dict):
-        _render_combination_results(_combined_res, _ind_resolved, st.session_state["fl_selected"])
+        # combine_factors returns {"backtest": {...}, "factor_correlation": {...}, ...}
+        # Unwrap the inner backtest result for the render function.
+        _bt = _combined_res.get("backtest", _combined_res)
+        # Inject correlation matrix from top-level key into the backtest dict
+        if "correlation_matrix" not in _bt and "factor_correlation" in _combined_res:
+            _bt["correlation_matrix"] = _combined_res["factor_correlation"]
+        _render_combination_results(_bt, _ind_resolved, st.session_state.get("fl_multi_select_widget", []))
 elif not selected:
     st.info("👆 Select 2+ signals above and click **Run Combined Backtest** to compare factor blends.")
 elif len(selected) < 2:

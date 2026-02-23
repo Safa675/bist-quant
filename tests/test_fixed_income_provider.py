@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from bist_quant.common.data_loader import DataLoader
-from bist_quant.common.fixed_income_provider import (
+from bist_quant.clients.fixed_income_provider import (
     DEFAULT_FALLBACK_RISK_FREE_RATE,
     FixedIncomeProvider,
 )

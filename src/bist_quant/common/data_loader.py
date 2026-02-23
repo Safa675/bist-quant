@@ -35,10 +35,26 @@ from .data_paths import DataPaths, get_data_paths
 logger = logging.getLogger(__name__)
 FETCHER_DIR: Final[Path] = PROJECT_ROOT / "src" / "bist_quant" / "fetcher"
 REGIME_DIR_CANDIDATES = [
+    PROJECT_ROOT / "outputs" / "regime" / "simple_regime",
+    PROJECT_ROOT / "outputs" / "regime",
+    PROJECT_ROOT / "regime_filter",
     PROJECT_ROOT / "Simple Regime Filter",
     PROJECT_ROOT / "Regime Filter",
-    PROJECT_ROOT / "regime_filter",
 ]
+
+
+def _normalize_dt_index(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    """Strip timezone and floor to midnight for reliable date alignment."""
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+    return idx.floor("D")
+
+
+def _normalize_dt_series(s: pd.Series) -> pd.Series:
+    """Strip timezone and floor to midnight for a datetime Series."""
+    if hasattr(s.dt, "tz") and s.dt.tz is not None:
+        s = s.dt.tz_localize(None)
+    return s.dt.floor("D")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -1280,6 +1296,9 @@ class DataLoader:
                     self.regime_model_dir.parent / "outputs" / "regime_features.csv"
                 )
             candidate_files.extend(
+                [p / "regime_features.csv" for p in REGIME_DIR_CANDIDATES]
+            )
+            candidate_files.extend(
                 [p / "outputs" / "regime_features.csv" for p in REGIME_DIR_CANDIDATES]
             )
             regime_file = next((f for f in candidate_files if f.exists()), candidate_files[0])
@@ -1379,20 +1398,40 @@ class DataLoader:
         if self._xautry_prices is None:
             logger.info("\n💰 Loading XAU/TRY prices...")
             target_path = Path(csv_path) if csv_path is not None else self.paths.gold_try_file
-            df = pd.read_csv(target_path, parse_dates=["Date"])
+            if target_path.suffix == ".parquet":
+                df = pd.read_parquet(target_path)
+                if "Date" not in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+                    df = df.reset_index()
+            else:
+                df = pd.read_csv(target_path, parse_dates=["Date"])
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
             if "XAU_TRY" not in df.columns:
-                raise ValueError("XAU_TRY column not found in CSV.")
-            df = df.sort_values("Date")
-            series = df.set_index("Date")["XAU_TRY"].astype(float)
+                # Try common column name variants
+                for col in ("xau_try", "Close", "close", "price"):
+                    if col in df.columns:
+                        df = df.rename(columns={col: "XAU_TRY"})
+                        break
+            if "XAU_TRY" not in df.columns:
+                raise ValueError(f"XAU_TRY column not found in {target_path.name}. Columns: {list(df.columns)}")
+            # Normalize dates to naive dates (midnight) to prevent overlap issues
+            if "Date" in df.columns:
+                df["Date"] = _normalize_dt_series(pd.to_datetime(df["Date"], errors="coerce"))
+                series = df.set_index("Date")["XAU_TRY"].astype(float)
+            else:
+                series = df["XAU_TRY"].astype(float)
+                if isinstance(series.index, pd.DatetimeIndex):
+                    series.index = _normalize_dt_index(series.index)
+
             series.name = "XAU_TRY"
             self._xautry_prices = series
             logger.info(f"  ✅ Loaded {len(series)} XAU/TRY observations")
 
         series = self._xautry_prices
         if start_date is not None:
-            series = series.loc[series.index >= start_date]
+            series = series.loc[series.index >= pd.Timestamp(start_date).floor("D")]
         if end_date is not None:
-            series = series.loc[series.index <= end_date]
+            series = series.loc[series.index <= pd.Timestamp(end_date).floor("D")]
         return series
 
     def load_xu100_prices(self, csv_path: Path | None = None) -> pd.Series:
@@ -1408,7 +1447,7 @@ class DataLoader:
                         xu100_df = hist.get_history("XU100", period="5y", interval="1d")
                         if xu100_df is not None and not xu100_df.empty:
                             if "Close" in xu100_df.columns:
-                                xu100_df.index = pd.to_datetime(xu100_df.index, errors="coerce")
+                                xu100_df.index = _normalize_dt_index(pd.to_datetime(xu100_df.index, errors="coerce"))
                                 self._xu100_prices = xu100_df["Close"].sort_index()
                                 logger.info(
                                     "  ✅ Loaded %d XU100 observations via borsapy",
@@ -1425,8 +1464,10 @@ class DataLoader:
             else:
                 df = pd.read_csv(target_path)
             if "Date" in df.columns:
-                df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+                df["Date"] = _normalize_dt_series(pd.to_datetime(df["Date"], errors="coerce"))
                 df = df.set_index("Date")
+            elif isinstance(df.index, pd.DatetimeIndex):
+                df.index = _normalize_dt_index(df.index)
             df = df.sort_index()
             # Prefer close for return calculations and benchmark alignment.
             if "Close" in df.columns:
@@ -1447,8 +1488,19 @@ class DataLoader:
             logger.warning(f"  ⚠️  USD/TRY file not found: {usdtry_file}")
             return pd.DataFrame()
 
-        df = pd.read_csv(usdtry_file, parse_dates=["Date"])
-        df = df.set_index("Date").sort_index()
+        if usdtry_file.suffix == ".parquet":
+            df = pd.read_parquet(usdtry_file)
+            if "Date" not in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+                df = df.reset_index()
+            if "Date" in df.columns:
+                df["Date"] = _normalize_dt_series(pd.to_datetime(df["Date"], errors="coerce"))
+                df = df.set_index("Date")
+            df = df.sort_index()
+        else:
+            df = pd.read_csv(usdtry_file, parse_dates=["Date"])
+            if "Date" in df.columns:
+                df["Date"] = _normalize_dt_series(pd.to_datetime(df["Date"], errors="coerce"))
+            df = df.set_index("Date").sort_index()
 
         # Rename column to 'Close' for consistency
         if "USDTRY" in df.columns:

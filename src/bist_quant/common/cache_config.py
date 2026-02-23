@@ -31,15 +31,36 @@ class CacheTTL:
         fast_info: Current quote / market snapshot.  Default 15 minutes.
         dividends: Dividend history.  Default 7 days.
         news: News / KAP announcements.  Default 1 hour.
+        gold: Historical gold prices (XAU/TRY daily).  Default 24 hours.
+        fx: Bank/institution FX rates.  Default 15 minutes.
+        fixed_income: Bond yields and TCMB rates.  Default 24 hours.
+        calendar: Economic calendar events.  Default 1 hour.
+        derivatives: VIOP futures/options contracts.  Default 4 hours.
+        funds: TEFAS fund data.  Default 1 hour.
+        macro: Macro economic events.  Default 1 hour.
+        us_stocks: US stock prices/quotes.  Default 4 hours.
+        crypto: Crypto market data.  Default 15 minutes.
+        commodities: Commodity prices (oil, metals).  Default 4 hours.
     """
 
-    prices: int = 14400           # 4 hours
+    prices: int = 14400            # 4 hours
     index_components: int = 86400  # 24 hours
     financials: int = 604800       # 7 days
     financial_ratios: int = 604800 # 7 days
     fast_info: int = 900           # 15 minutes
     dividends: int = 604800        # 7 days
     news: int = 3600               # 1 hour
+    # --- client-specific categories ---
+    gold: int = 86400              # 24 hours (historical daily data)
+    fx: int = 900                  # 15 minutes (bank rates change frequently)
+    fixed_income: int = 86400      # 24 hours (bond yields update daily)
+    calendar: int = 3600           # 1 hour
+    derivatives: int = 14400       # 4 hours (VIOP contracts)
+    funds: int = 3600              # 1 hour
+    macro: int = 3600              # 1 hour
+    us_stocks: int = 14400         # 4 hours
+    crypto: int = 900              # 15 minutes
+    commodities: int = 14400       # 4 hours
 
     @classmethod
     def from_env(cls) -> CacheTTL:
@@ -52,6 +73,16 @@ class CacheTTL:
             fast_info=_env_int("BIST_CACHE_TTL_FAST_INFO", cls.fast_info),
             dividends=_env_int("BIST_CACHE_TTL_DIVIDENDS", cls.dividends),
             news=_env_int("BIST_CACHE_TTL_NEWS", cls.news),
+            gold=_env_int("BIST_CACHE_TTL_GOLD", cls.gold),
+            fx=_env_int("BIST_CACHE_TTL_FX", cls.fx),
+            fixed_income=_env_int("BIST_CACHE_TTL_FIXED_INCOME", cls.fixed_income),
+            calendar=_env_int("BIST_CACHE_TTL_CALENDAR", cls.calendar),
+            derivatives=_env_int("BIST_CACHE_TTL_DERIVATIVES", cls.derivatives),
+            funds=_env_int("BIST_CACHE_TTL_FUNDS", cls.funds),
+            macro=_env_int("BIST_CACHE_TTL_MACRO", cls.macro),
+            us_stocks=_env_int("BIST_CACHE_TTL_US_STOCKS", cls.us_stocks),
+            crypto=_env_int("BIST_CACHE_TTL_CRYPTO", cls.crypto),
+            commodities=_env_int("BIST_CACHE_TTL_COMMODITIES", cls.commodities),
         )
 
     def ttl_for(self, category: str) -> int:

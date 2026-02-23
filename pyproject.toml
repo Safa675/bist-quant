@@ -128,43 +128,61 @@ markers = [
 source = ["src/bist_quant"]
 branch = true
 omit = [
+    # Package init / test files
     "src/bist_quant/__init__.py",
     "src/bist_quant/tests/*",
     "src/bist_quant/**/test_*.py",
+
+    # Analytics (separate coverage target)
     "src/bist_quant/analytics/*",
-    "src/bist_quant/backtesting.py",
+
+    # CLI entrypoints
     "src/bist_quant/cli.py",
+    "src/bist_quant/cli/*",
+
+    # Common — infrastructure modules excluded from unit coverage
     "src/bist_quant/common/backtest_services.py",
     "src/bist_quant/common/backtester.py",
     "src/bist_quant/common/benchmarking.py",
-    "src/bist_quant/common/benchmarking_cli.py",
-    "src/bist_quant/common/borsapy_adapter.py",
-    "src/bist_quant/common/crypto_client.py",
     "src/bist_quant/common/data_loader.py",
     "src/bist_quant/common/data_manager.py",
     "src/bist_quant/common/data_paths.py",
     "src/bist_quant/common/enums.py",
-    "src/bist_quant/common/fund_analyzer.py",
-    "src/bist_quant/common/fx_commodities_client.py",
-    "src/bist_quant/common/macro_adapter.py",
     "src/bist_quant/common/market_cap_utils.py",
     "src/bist_quant/common/panel_cache.py",
     "src/bist_quant/common/portfolio_analytics.py",
     "src/bist_quant/common/report_generator.py",
     "src/bist_quant/common/staleness.py",
-    "src/bist_quant/common/us_stock_client.py",
     "src/bist_quant/common/utils.py",
+
+    # Configs
     "src/bist_quant/configs/__init__.py",
-    "src/bist_quant/configs/_template.py",
+
+    # External client adapters (moved from common/ to clients/)
+    "src/bist_quant/clients/*",
+
+    # Data pipeline, engines, fetchers
     "src/bist_quant/data_pipeline/*",
     "src/bist_quant/engines/*",
-    "src/bist_quant/jobs.py",
-    "src/bist_quant/optimization.py",
+    "src/bist_quant/fetcher/*",
+
+    # Jobs package (was jobs.py, now a package)
+    "src/bist_quant/jobs/*",
+
+    # Observability, security, persistence, realtime, settings
+    "src/bist_quant/observability/*",
+    "src/bist_quant/persistence/*",
+    "src/bist_quant/realtime/*",
+    "src/bist_quant/security/*",
+    "src/bist_quant/settings/*",
+
+    # Top-level modules
     "src/bist_quant/portfolio.py",
-    "src/bist_quant/portfolio_engine.py",
     "src/bist_quant/regime/*",
     "src/bist_quant/runtime.py",
     "src/bist_quant/services/*",
+
+    # Signals — infrastructure helpers and all strategy files
     "src/bist_quant/signals/__init__.py",
     "src/bist_quant/signals/_context.py",
     "src/bist_quant/signals/axis_cache.py",

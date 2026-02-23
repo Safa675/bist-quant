@@ -70,8 +70,12 @@ def _delta_pct(series: pd.Series, periods: int = 1) -> float | None:
 def _xu100_chart(lookback_days: int = 504) -> go.Figure | None:
     """XU100 equity curve with regime band shading."""
     try:
-        path = resolve_data_path("xu100_prices.csv")
-        df = load_csv_cached(str(path))
+        from bist_quant.common.data_paths import get_data_paths
+        path = get_data_paths().xu100_prices
+        if path.suffix == ".parquet":
+            df = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+        else:
+            df = load_csv_cached(str(path))
         if df.empty:
             return None
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -141,8 +145,12 @@ label = regime_info.get("label", "Unknown")
 color = regime_color(label)
 
 # Macro data
-usdtry_df = load_csv_cached(str(resolve_data_path("usdtry_data.csv")))
-xau_df = load_csv_cached(str(resolve_data_path("xau_try_2013_2026.csv")))
+# We load the combined XAU and USD frame that the gold fetcher generates
+gold_cache = _REPO_ROOT / "data" / "borsapy_cache" / "gold" / "xau_try_daily.parquet"
+if gold_cache.exists():
+    gold_df = pd.read_parquet(gold_cache).reset_index()
+else:
+    gold_df = pd.DataFrame()
 
 
 # ── TOP ROW: regime card + 3 macro metrics ────────────────────────────────────
@@ -161,23 +169,19 @@ with col_regime:
     ma_icon = "📈" if above_ma else "📉"
     alloc_str = f"{alloc * 100:.0f}%" if alloc is not None else "—"
 
+    parts = []
+    if real_vol: parts.append(f"Vol: {real_vol*100:.1f}%")
+    if vol_pct is not None: parts.append(f"Percentile: {vol_pct:.0f}th")
+    if last_date_str: parts.append(last_date_str)
+    bottom_line = " &nbsp;·&nbsp; ".join(parts) if parts else "—"
+
     st.markdown(
         f"""
         <div class="bq-card" style="border-left: 3px solid {color};">
-            <p class="bq-section-label" style="margin-top:0;">Market Regime</p>
-            <div style="font-family:{FONT_MONO};font-size:2rem;font-weight:700;
-                        color:{color};line-height:1.2;margin:8px 0 12px;">
-                {label}
-            </div>
-            <div style="font-size:0.82rem;color:{TEXT_SECONDARY};line-height:1.8;">
-                {ma_icon} {'Above' if above_ma else 'Below'} 50-day MA &nbsp;·&nbsp;
-                Allocation: <b style="color:{color};">{alloc_str}</b>
-            </div>
-            <div style="font-size:0.78rem;color:{TEXT_MUTED};margin-top:4px;line-height:1.8;">
-                Vol: {f"{real_vol*100:.1f}%" if real_vol else "—"} &nbsp;·&nbsp;
-                Percentile: {f"{vol_pct:.0f}th" if vol_pct is not None else "—"} &nbsp;·&nbsp;
-                {last_date_str}
-            </div>
+            <p class="bq-section-label" style="margin-top:0;margin-bottom:8px;">Market Regime</p>
+            <div style="font-family:{FONT_MONO};font-size:2rem;font-weight:700;color:{color};line-height:1.2;margin:0 0 12px;">{label}</div>
+            <div style="font-size:0.82rem;color:{TEXT_SECONDARY};line-height:1.8;">{ma_icon} {'Above' if above_ma else 'Below'} 50-day MA &nbsp;·&nbsp; Allocation: <b style="color:{color};">{alloc_str}</b></div>
+            <div style="font-size:0.78rem;color:{TEXT_MUTED};margin-top:4px;line-height:1.8;">{bottom_line}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -186,19 +190,26 @@ with col_regime:
 # Macro metrics
 with col_metrics:
     usdtry_val, usdtry_chg = "—", None
-    if not usdtry_df.empty:
-        s = usdtry_df["USDTRY"].dropna()
-        usdtry_val = fmt_num(s.iloc[-1], 4)
-        usdtry_chg = _delta_pct(s, 1)
+    if not gold_df.empty and "USD_TRY" in gold_df.columns:
+        s = gold_df["USD_TRY"].dropna()
+        if not s.empty:
+            usdtry_val = fmt_num(s.iloc[-1], 4)
+            usdtry_chg = _delta_pct(s, 1)
 
     gold_val, gold_chg = "—", None
-    if not xau_df.empty:
-        s = xau_df["XAU_TRY"].dropna()
-        gold_val = fmt_num(s.iloc[-1] / 1000, 1) + "K"
-        gold_chg = _delta_pct(s, 1)
+    if not gold_df.empty and "XAU_TRY" in gold_df.columns:
+        s = gold_df["XAU_TRY"].dropna()
+        if not s.empty:
+            gold_val = fmt_num(s.iloc[-1] / 1000, 1) + "K"
+            gold_chg = _delta_pct(s, 1)
 
     xu100_val, xu100_chg = "—", None
-    xu100_df = load_csv_cached(str(resolve_data_path("xu100_prices.csv")))
+    from bist_quant.common.data_paths import get_data_paths
+    path = get_data_paths().xu100_prices
+    if path.suffix == ".parquet":
+        xu100_df = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+    else:
+        xu100_df = load_csv_cached(str(path))
     if not xu100_df.empty:
         s = xu100_df["Close"].dropna()
         xu100_val = fmt_num(s.iloc[-1], 0)
@@ -272,31 +283,44 @@ if series:
 # ── MACRO DETAIL EXPANDER ─────────────────────────────────────────────────────
 
 with st.expander("Macro Detail", expanded=False):
+    macro_lookback_str = st.radio(
+        "Time window",
+        ["90 Days", "6 Months", "1 Year", "5 Years"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    macro_lookback_days = {
+        "90 Days": 90,
+        "6 Months": 126,
+        "1 Year": 252,
+        "5 Years": 1260
+    }[macro_lookback_str]
+
     mc1, mc2 = st.columns(2)
 
     with mc1:
-        st.markdown("**USD/TRY — Last 90 days**")
-        if not usdtry_df.empty:
-            usdtry_df["Date"] = pd.to_datetime(usdtry_df["Date"], errors="coerce")
-            tail90 = usdtry_df.sort_values("Date").tail(90)
+        st.markdown(f"**USD/TRY — Last {macro_lookback_str}**")
+        if not gold_df.empty and "USD_TRY" in gold_df.columns:
+            gold_df["Date"] = pd.to_datetime(gold_df["Date"], errors="coerce")
+            tail_df = gold_df.sort_values("Date").tail(macro_lookback_days)
             from app.ui import base_fig as _base_fig
             fig_fx = _base_fig("", height=200)
             fig_fx.add_trace(go.Scatter(
-                x=tail90["Date"], y=tail90["USDTRY"],
+                x=tail_df["Date"], y=tail_df["USD_TRY"],
                 mode="lines", line=dict(color=ACCENT, width=2),
                 name="USD/TRY",
             ))
             st.plotly_chart(fig_fx, use_container_width=True)
 
     with mc2:
-        st.markdown("**Gold (TRY/oz) — Last 90 days**")
-        if not xau_df.empty:
-            xau_df["Date"] = pd.to_datetime(xau_df["Date"], errors="coerce")
-            tail90 = xau_df.sort_values("Date").tail(90)
+        st.markdown(f"**Gold (TRY/oz) — Last {macro_lookback_str}**")
+        if not gold_df.empty and "XAU_TRY" in gold_df.columns:
+            gold_df["Date"] = pd.to_datetime(gold_df["Date"], errors="coerce")
+            tail_df = gold_df.sort_values("Date").tail(macro_lookback_days)
             from app.ui import base_fig as _base_fig
             fig_gold = _base_fig("", height=200)
             fig_gold.add_trace(go.Scatter(
-                x=tail90["Date"], y=tail90["XAU_TRY"],
+                x=tail_df["Date"], y=tail_df["XAU_TRY"],
                 mode="lines", line=dict(color=WARNING, width=2),
                 name="Gold (TRY)",
             ))
@@ -305,16 +329,18 @@ with st.expander("Macro Detail", expanded=False):
     # Week-over-week changes table
     st.markdown("**Weekly Changes**")
     rows = []
-    if not usdtry_df.empty:
-        s = usdtry_df["USDTRY"].dropna()
-        rows.append({"Asset": "USD/TRY", "Current": fmt_num(s.iloc[-1], 4),
-                     "1D Δ": fmt_pct(_delta_pct(s, 1)), "1W Δ": fmt_pct(_delta_pct(s, 5)),
-                     "1M Δ": fmt_pct(_delta_pct(s, 21))})
-    if not xau_df.empty:
-        s = xau_df["XAU_TRY"].dropna()
-        rows.append({"Asset": "Gold (TRY/oz)", "Current": fmt_num(s.iloc[-1], 0),
-                     "1D Δ": fmt_pct(_delta_pct(s, 1)), "1W Δ": fmt_pct(_delta_pct(s, 5)),
-                     "1M Δ": fmt_pct(_delta_pct(s, 21))})
+    if not gold_df.empty and "USD_TRY" in gold_df.columns:
+        s = gold_df["USD_TRY"].dropna()
+        if not s.empty:
+            rows.append({"Asset": "USD/TRY", "Current": fmt_num(s.iloc[-1], 4),
+                         "1D Δ": fmt_pct(_delta_pct(s, 1)), "1W Δ": fmt_pct(_delta_pct(s, 5)),
+                         "1M Δ": fmt_pct(_delta_pct(s, 21))})
+    if not gold_df.empty and "XAU_TRY" in gold_df.columns:
+        s = gold_df["XAU_TRY"].dropna()
+        if not s.empty:
+            rows.append({"Asset": "Gold (TRY/oz)", "Current": fmt_num(s.iloc[-1], 0),
+                         "1D Δ": fmt_pct(_delta_pct(s, 1)), "1W Δ": fmt_pct(_delta_pct(s, 5)),
+                         "1M Δ": fmt_pct(_delta_pct(s, 21))})
     if not xu100_df.empty:
         s = xu100_df["Close"].dropna()
         rows.append({"Asset": "XU100", "Current": fmt_num(s.iloc[-1], 0),

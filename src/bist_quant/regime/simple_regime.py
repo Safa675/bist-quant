@@ -74,46 +74,45 @@ class DataLoader:
     """Load XU100 price data. That's all we need."""
 
     def __init__(self, data_dir=None):
-        if data_dir is None:
-            # Look for data relative to this file
-            here = Path(__file__).resolve().parent
-            # Safely resolve `Market Research/data` depending on where simple_regime.py is installed
-            candidates = [
-                here.parent.parent.parent / "data",  # For /src/bist_quant/regime/simple_regime.py
-                here.parent.parent / "data",         # Legacy
-                here.parent / "data",
-                here / "data",
-            ]
-            for c in candidates:
-                if (c / CONFIG['xu100_file']).exists():
-                    self.data_dir = c
-                    break
-            else:
-                self.data_dir = candidates[0]
-        else:
-            self.data_dir = Path(data_dir)
+        pass
 
     def load_xu100(self) -> pd.DataFrame:
         """Load XU100 index data → DatetimeIndex, columns: Open/High/Low/Close/Volume"""
-        filepath = self.data_dir / CONFIG['xu100_file']
+        from bist_quant.common.data_paths import get_data_paths
+        
+        filepath = get_data_paths().xu100_prices
         if not filepath.exists():
             raise FileNotFoundError(f"XU100 data not found: {filepath}")
 
-        df = pd.read_csv(filepath)
+        if filepath.suffix == '.parquet':
+            df = pd.read_parquet(filepath)
+        else:
+            df = pd.read_csv(filepath)
 
         # Skip header row if present
-        if len(df) > 0:
+        if len(df) > 0 and 'Date' in df.columns:
             first_date = pd.to_datetime(df.iloc[0]['Date'], errors='coerce')
             if pd.isna(first_date):
                 df = df.iloc[1:].copy()
 
-        df['Date'] = pd.to_datetime(df['Date'])
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.set_index('Date')
+        else:
+            df.index = pd.to_datetime(df.index, errors='coerce')
+
         for col in ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        df = df.set_index('Date').sort_index()
-        df = df[df['Close'].notna()]
+        df = df.sort_index()
+        
+        # Check for both "Close" or "close"
+        if 'Close' not in df.columns and 'close' in df.columns:
+            df['Close'] = df['close']
+            
+        if 'Close' in df.columns:
+            df = df[df['Close'].notna()]
 
         logger.info(f"Loaded {len(df)} days: {df.index[0].date()} → {df.index[-1].date()}")
         return df

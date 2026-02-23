@@ -247,12 +247,14 @@ class PortfolioEngine:
             data_dir = None
 
         script_dir = Path(__file__).parent
-        bist_root = script_dir.parent
+        bist_root = script_dir.parent.parent.parent
         default_data_dir = bist_root / "data"
         regime_candidates = [
+            bist_root / "outputs" / "regime" / "simple_regime",
+            bist_root / "outputs" / "regime",
+            bist_root / "regime_filter" / "outputs",
             bist_root / "Simple Regime Filter" / "outputs",
             bist_root / "Regime Filter" / "outputs",
-            bist_root / "regime_filter" / "outputs",
         ]
 
         resolved_data_dir = Path(data_dir) if data_dir is not None else default_data_dir
@@ -1294,8 +1296,10 @@ def main():
     project_root = script_dir.parent.parent
     data_dir = project_root / "data"
     regime_model_dir_candidates = [
-        project_root / "Simple Regime Filter" / "outputs",
+        project_root / "outputs" / "regime" / "simple_regime",
+        project_root / "outputs" / "regime",
         project_root / "regime_filter" / "outputs",
+        project_root / "Simple Regime Filter" / "outputs",
     ]
     regime_model_dir = next(
         (p for p in regime_model_dir_candidates if p.exists()),

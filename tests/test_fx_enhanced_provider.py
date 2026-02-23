@@ -6,8 +6,8 @@ import asyncio
 
 import pandas as pd
 
-from bist_quant.common.fx_commodities_client import FXCommoditiesClient
-from bist_quant.common.fx_enhanced_provider import FXEnhancedProvider
+from bist_quant.clients.fx_commodities_client import FXCommoditiesClient
+from bist_quant.clients.fx_enhanced_provider import FXEnhancedProvider
 
 
 class _DummyFX:

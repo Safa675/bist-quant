@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import bist_quant.common.data_loader as data_loader_module
-from bist_quant.api import create_app
 from bist_quant.services import SystemService
 
 
@@ -55,6 +55,10 @@ def test_system_service_get_macro_calendar_serializes_events(monkeypatch, tmp_pa
 
 
 def test_api_macro_calendar_route_registered() -> None:
-    app = create_app()
+    # bist_quant.api (FastAPI app) is optional — skip if not built
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available"
+    )
+    app = bist_quant_api.create_app()
     paths = {route.path for route in app.routes}
     assert "/api/macro/calendar" in paths

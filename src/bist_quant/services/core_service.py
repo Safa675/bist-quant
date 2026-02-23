@@ -636,10 +636,10 @@ class CoreBackendService:
         )
 
         if prices_path is None:
-            resolved_path = self.paths.data_dir / "bist_prices_full.csv"
-            if not resolved_path.exists() and not resolved_path.with_suffix(".parquet").exists():
+            resolved_path = self.paths.prices_file
+            if not resolved_path.exists():
                 raise FileNotFoundError(
-                    f"Price file not found: {resolved_path} or {resolved_path.with_suffix('.parquet')}"
+                    f"Price file not found: {resolved_path}"
                 )
             return loader.load_prices(resolved_path)
 
