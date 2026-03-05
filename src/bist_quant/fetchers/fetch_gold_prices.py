@@ -15,11 +15,11 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
+
 # Ensure project src is on path when run as a script
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(_ROOT / "src"))
-
-import pandas as pd
 
 CACHE_DIR = _ROOT / "data" / "borsapy_cache"
 DEFAULT_YEARS = 10

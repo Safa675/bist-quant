@@ -32,6 +32,7 @@ except Exception:  # pragma: no cover - optional dependency fallback
     bp = None
 
 from bist_quant.common.data_loader import DataLoader  # noqa: E402
+from bist_quant.common.data_paths import DataPaths  # noqa: E402
 from bist_quant.signals.borsapy_indicators import BorsapyIndicators  # noqa: E402
 from bist_quant.signals.ta_consensus_signals import TAConsensusSignals  # noqa: E402
 
@@ -73,6 +74,28 @@ CACHE_DIR = Path(os.environ.get("SIGNAL_CACHE_DIR", str(DEFAULT_CACHE_DIR)))
 PRICE_CACHE_TTL_SEC = _env_int("SIGNAL_PRICE_CACHE_TTL_SEC", 900, minimum=0)
 INDEX_CACHE_TTL_SEC = _env_int("SIGNAL_INDEX_CACHE_TTL_SEC", 21600, minimum=0)
 DOWNLOAD_BATCH_SIZE = _env_int("SIGNAL_DOWNLOAD_BATCH_SIZE", 25, minimum=1)
+
+
+def _get_data_index_cache_path(index_name: str) -> Path:
+    """
+    Get the path to index components JSON in the data folder.
+    
+    Uses the same location as fetch_indices.py and borsapy cache:
+    data/borsapy_cache/index_components/{INDEX}.json
+    
+    Falls back to .cache/ only if data folder doesn't exist (legacy support).
+    """
+    safe = "".join(ch if ch.isalnum() else "_" for ch in index_name.upper())
+    
+    # Primary: data folder (persistent, shared)
+    data_paths = DataPaths()
+    data_cache_path = data_paths.borsapy_cache_dir / "index_components" / f"{safe}.json"
+    
+    if data_cache_path.exists():
+        return data_cache_path
+    
+    # Fallback: .cache/ directory (legacy, temporary)
+    return CACHE_DIR / f"index_components_{safe}.json"
 
 
 def _resolve_paths(runtime_paths: RuntimePaths | None) -> RuntimePaths:
@@ -266,21 +289,67 @@ def _is_cache_fresh(path: Path, ttl_seconds: int) -> bool:
 
 
 def _index_cache_path(index_name: str) -> Path:
-    safe = "".join(ch if ch.isalnum() else "_" for ch in index_name.upper())
-    return CACHE_DIR / f"index_components_{safe}.json"
+    """Get cache path for index components (data folder primary, .cache/ fallback)."""
+    return _get_data_index_cache_path(index_name)
 
 
 def _load_cached_index_components(index_name: str) -> list[str] | None:
+    """
+    Load cached index components from data folder or .cache/ fallback.
+    
+    For data folder caches, checks the .meta.json file for TTL info.
+    For .cache/ fallback, uses file modification time.
+    """
     cache_path = _index_cache_path(index_name)
-    if not _is_cache_fresh(cache_path, INDEX_CACHE_TTL_SEC):
+    
+    if not cache_path.exists():
         return None
+    
+    # Check freshness based on location
+    is_data_folder = str(cache_path).startswith(str(DataPaths().borsapy_cache_dir))
+    
+    if is_data_folder:
+        # Use meta.json for TTL check (borsapy cache format)
+        meta_path = cache_path.with_suffix(".meta.json")
+        if not meta_path.exists():
+            # No meta file, use file modification time as fallback
+            if not _is_cache_fresh(cache_path, INDEX_CACHE_TTL_SEC):
+                return None
+        else:
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                expires_at = meta.get("expires_at")
+                if expires_at:
+                    from datetime import datetime
+                    # Parse ISO format timestamp
+                    try:
+                        expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                        if datetime.now(expires_dt.tzinfo) > expires_dt:
+                            return None  # Expired
+                    except Exception:
+                        # Parse failed, fall through to load anyway
+                        pass
+            except Exception:
+                # Meta read failed, fall back to modification time
+                if not _is_cache_fresh(cache_path, INDEX_CACHE_TTL_SEC):
+                    return None
+    else:
+        # Legacy .cache/ folder - use modification time
+        if not _is_cache_fresh(cache_path, INDEX_CACHE_TTL_SEC):
+            return None
+    
+    # Load the JSON
     try:
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
     except Exception:
         return None
+    
+    # Handle both formats: plain list or dict with "symbols" key
     symbols = payload.get("symbols") if isinstance(payload, dict) else payload
     if not isinstance(symbols, list):
         return None
+    
+    # Clean and deduplicate symbols
     cleaned: list[str] = []
     seen: set[str] = set()
     for symbol in symbols:
@@ -289,20 +358,50 @@ def _load_cached_index_components(index_name: str) -> list[str] | None:
             continue
         seen.add(base)
         cleaned.append(base)
+    
     return cleaned or None
 
 
 def _save_cached_index_components(index_name: str, symbols: list[str]) -> None:
+    """
+    Save index components to the data folder (preferred) or .cache/ fallback.
+    
+    When writing to the data folder, also creates a .meta.json file with
+    borsapy cache metadata format (TTL, expiration, source).
+    
+    Cache write failures are silently ignored to avoid breaking live API flow.
+    """
     if not symbols:
         return
+    
+    cache_path = _index_cache_path(index_name)
+    
     try:
-        _ensure_cache_dir()
-        cache_path = _index_cache_path(index_name)
-        payload = {
-            "symbols": symbols,
-            "cached_at": time.time(),
-        }
-        cache_path.write_text(json.dumps(payload), encoding="utf-8")
+        # Ensure parent directory exists
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write the main JSON file (plain list format for borsapy compatibility)
+        cache_path.write_text(json.dumps(symbols, indent=2), encoding="utf-8")
+        
+        # If writing to data folder, also create meta.json
+        is_data_folder = str(cache_path).startswith(str(DataPaths().borsapy_cache_dir))
+        if is_data_folder:
+            from datetime import datetime, timedelta, timezone
+            
+            ttl_seconds = INDEX_CACHE_TTL_SEC
+            now = datetime.now(timezone.utc)
+            expires = now + timedelta(seconds=ttl_seconds)
+            
+            meta = {
+                "created_at": now.isoformat(),
+                "expires_at": expires.isoformat(),
+                "ttl_seconds": ttl_seconds,
+                "source": "signal_construction",
+                "row_count": len(symbols),
+            }
+            
+            meta_path = cache_path.with_suffix(".meta.json")
+            meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     except Exception:
         # Cache write failures should never break live API flow.
         return

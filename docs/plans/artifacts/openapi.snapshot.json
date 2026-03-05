@@ -1,0 +1,2801 @@
+{
+  "components": {
+    "schemas": {
+      "AnalyticsRunRequest": {
+        "description": "Run analytics on an equity curve.",
+        "properties": {
+          "benchmark_curve": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Benchmark Curve",
+            "type": "array"
+          },
+          "benchmark_symbol": {
+            "default": "XU100",
+            "title": "Benchmark Symbol",
+            "type": "string"
+          },
+          "equity_curve": {
+            "description": "List of {date, value} points",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "minItems": 2,
+            "title": "Equity Curve",
+            "type": "array"
+          },
+          "include_benchmark": {
+            "default": true,
+            "title": "Include Benchmark",
+            "type": "boolean"
+          },
+          "market_impact_bps": {
+            "default": 2.0,
+            "minimum": 0.0,
+            "title": "Market Impact Bps",
+            "type": "number"
+          },
+          "methods": {
+            "items": {
+              "enum": [
+                "performance",
+                "drawdown",
+                "rolling",
+                "walk_forward",
+                "monte_carlo",
+                "attribution",
+                "stress",
+                "risk",
+                "cost",
+                "transaction_costs"
+              ],
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "monte_carlo_horizon": {
+            "default": 252,
+            "maximum": 2520.0,
+            "minimum": 30.0,
+            "title": "Monte Carlo Horizon",
+            "type": "integer"
+          },
+          "monte_carlo_iterations": {
+            "default": 750,
+            "maximum": 10000.0,
+            "minimum": 100.0,
+            "title": "Monte Carlo Iterations",
+            "type": "integer"
+          },
+          "rebalance_every_days": {
+            "default": 21,
+            "minimum": 1.0,
+            "title": "Rebalance Every Days",
+            "type": "integer"
+          },
+          "rolling_window": {
+            "default": 63,
+            "maximum": 504.0,
+            "minimum": 10.0,
+            "title": "Rolling Window",
+            "type": "integer"
+          },
+          "slippage_bps": {
+            "default": 5.0,
+            "minimum": 0.0,
+            "title": "Slippage Bps",
+            "type": "number"
+          },
+          "spread_bps": {
+            "default": 5.0,
+            "minimum": 0.0,
+            "title": "Spread Bps",
+            "type": "number"
+          },
+          "tax_rate_pct": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Tax Rate Pct",
+            "type": "number"
+          },
+          "train_ratio": {
+            "default": 0.7,
+            "maximum": 0.9,
+            "minimum": 0.3,
+            "title": "Train Ratio",
+            "type": "number"
+          },
+          "walk_forward_splits": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Walk Forward Splits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "equity_curve"
+        ],
+        "title": "AnalyticsRunRequest",
+        "type": "object"
+      },
+      "ApiErrorDetail": {
+        "description": "Machine-readable error detail payload.",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "ApiErrorDetail",
+        "type": "object"
+      },
+      "ApiErrorEnvelope": {
+        "description": "Top-level FastAPI error envelope.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ApiErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ApiErrorEnvelope",
+        "type": "object"
+      },
+      "BacktestRequest": {
+        "properties": {
+          "benchmark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "XU100",
+            "title": "Benchmark"
+          },
+          "end_date": {
+            "default": "2024-12-31",
+            "title": "End Date",
+            "type": "string"
+          },
+          "factor_name": {
+            "minLength": 1,
+            "title": "Factor Name",
+            "type": "string"
+          },
+          "max_position_weight": {
+            "default": 0.25,
+            "maximum": 1.0,
+            "minimum": 0.05,
+            "title": "Max Position Weight",
+            "type": "number"
+          },
+          "rebalance_frequency": {
+            "default": "monthly",
+            "title": "Rebalance Frequency",
+            "type": "string"
+          },
+          "signal_lag_days": {
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Lag Days"
+          },
+          "slippage_bps": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 5.0,
+            "title": "Slippage Bps"
+          },
+          "start_date": {
+            "default": "2018-01-01",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "stop_loss_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.01,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0.15,
+            "title": "Stop Loss Threshold"
+          },
+          "target_downside_vol": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.01,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0.2,
+            "title": "Target Downside Vol"
+          },
+          "top_n": {
+            "default": 20,
+            "maximum": 100.0,
+            "minimum": 5.0,
+            "title": "Top N",
+            "type": "integer"
+          },
+          "use_inverse_vol_sizing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Inverse Vol Sizing"
+          },
+          "use_liquidity_filter": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Use Liquidity Filter"
+          },
+          "use_regime_filter": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Use Regime Filter"
+          },
+          "use_slippage": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Use Slippage"
+          },
+          "use_stop_loss": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "title": "Use Stop Loss"
+          },
+          "use_vol_targeting": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "title": "Use Vol Targeting"
+          }
+        },
+        "required": [
+          "factor_name"
+        ],
+        "title": "BacktestRequest",
+        "type": "object"
+      },
+      "ComplianceTransactionRequest": {
+        "description": "Check a transaction against compliance rules.",
+        "properties": {
+          "rules": {
+            "description": "Optional rule overrides. If empty, default rules are used.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "transaction": {
+            "additionalProperties": true,
+            "description": "Transaction record: {id, timestamp, user_id, order_id, symbol, side, quantity, price, venue, strategy_id}",
+            "title": "Transaction",
+            "type": "object"
+          }
+        },
+        "required": [
+          "transaction"
+        ],
+        "title": "ComplianceTransactionRequest",
+        "type": "object"
+      },
+      "CryptoSizingRequest": {
+        "description": "Crypto position sizing calculator.",
+        "properties": {
+          "entry_price": {
+            "exclusiveMinimum": 0.0,
+            "title": "Entry Price",
+            "type": "number"
+          },
+          "equity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Equity",
+            "type": "number"
+          },
+          "leverage": {
+            "default": 1.0,
+            "minimum": 1.0,
+            "title": "Leverage",
+            "type": "number"
+          },
+          "pair": {
+            "minLength": 1,
+            "title": "Pair",
+            "type": "string"
+          },
+          "risk_pct": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 100.0,
+            "title": "Risk Pct",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "stop_distance_pct": {
+            "exclusiveMinimum": 0.0,
+            "title": "Stop Distance Pct",
+            "type": "number"
+          },
+          "taker_fee_bps": {
+            "default": 5.0,
+            "minimum": 0.0,
+            "title": "Taker Fee Bps",
+            "type": "number"
+          }
+        },
+        "required": [
+          "pair",
+          "side",
+          "entry_price",
+          "equity",
+          "risk_pct",
+          "stop_distance_pct"
+        ],
+        "title": "CryptoSizingRequest",
+        "type": "object"
+      },
+      "FactorCombineRequest": {
+        "description": "Combine multiple factors with optional timing.",
+        "properties": {
+          "benchmark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "XU100",
+            "title": "Benchmark"
+          },
+          "end_date": {
+            "default": "2025-12-31",
+            "title": "End Date",
+            "type": "string"
+          },
+          "max_position_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Weight"
+          },
+          "method": {
+            "default": "custom",
+            "description": "Weighting scheme: custom, equal, risk_parity, mean_variance, min_variance",
+            "title": "Method",
+            "type": "string"
+          },
+          "rebalance_frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rebalance Frequency"
+          },
+          "signals": {
+            "description": "List of {name, weight, ...params} factor specs",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "minItems": 1,
+            "title": "Signals",
+            "type": "array"
+          },
+          "start_date": {
+            "default": "2020-01-01",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "timing_enabled": {
+            "default": false,
+            "title": "Timing Enabled",
+            "type": "boolean"
+          },
+          "timing_lookback": {
+            "default": 63,
+            "minimum": 5.0,
+            "title": "Timing Lookback",
+            "type": "integer"
+          },
+          "timing_threshold": {
+            "default": 0.0,
+            "title": "Timing Threshold",
+            "type": "number"
+          },
+          "top_n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top N"
+          },
+          "weights": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights"
+          }
+        },
+        "required": [
+          "signals"
+        ],
+        "title": "FactorCombineRequest",
+        "type": "object"
+      },
+      "FactorSnapshotRequest": {
+        "description": "Cross-sectional signal scores request.",
+        "properties": {
+          "buy_threshold": {
+            "default": 0.3,
+            "title": "Buy Threshold",
+            "type": "number"
+          },
+          "custom_symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Custom Symbols",
+            "type": "array"
+          },
+          "focus_symbol": {
+            "default": "",
+            "title": "Focus Symbol",
+            "type": "string"
+          },
+          "indicator_params": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Indicator Params",
+            "type": "object"
+          },
+          "indicators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Indicators",
+            "type": "array"
+          },
+          "interval": {
+            "default": "1d",
+            "title": "Interval",
+            "type": "string"
+          },
+          "max_symbols": {
+            "default": 100,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Symbols",
+            "type": "integer"
+          },
+          "period": {
+            "default": "1y",
+            "title": "Period",
+            "type": "string"
+          },
+          "sell_threshold": {
+            "default": -0.3,
+            "title": "Sell Threshold",
+            "type": "number"
+          },
+          "top_n": {
+            "default": 50,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          },
+          "universe": {
+            "default": "XU100",
+            "title": "Universe",
+            "type": "string"
+          }
+        },
+        "title": "FactorSnapshotRequest",
+        "type": "object"
+      },
+      "GreeksRequest": {
+        "description": "Black-Scholes option Greeks calculation.",
+        "properties": {
+          "option_type": {
+            "enum": [
+              "call",
+              "put"
+            ],
+            "title": "Option Type",
+            "type": "string"
+          },
+          "risk_free_rate": {
+            "title": "Risk Free Rate",
+            "type": "number"
+          },
+          "spot": {
+            "exclusiveMinimum": 0.0,
+            "title": "Spot",
+            "type": "number"
+          },
+          "strike": {
+            "exclusiveMinimum": 0.0,
+            "title": "Strike",
+            "type": "number"
+          },
+          "time_years": {
+            "exclusiveMinimum": 0.0,
+            "title": "Time Years",
+            "type": "number"
+          },
+          "volatility": {
+            "exclusiveMinimum": 0.0,
+            "title": "Volatility",
+            "type": "number"
+          }
+        },
+        "required": [
+          "option_type",
+          "spot",
+          "strike",
+          "time_years",
+          "volatility",
+          "risk_free_rate"
+        ],
+        "title": "GreeksRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JobCreateRequest": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "title": "JobCreateRequest",
+        "type": "object"
+      },
+      "OptimizationRunRequest": {
+        "description": "Run strategy parameter optimization.",
+        "properties": {
+          "constraints": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Constraints"
+          },
+          "max_trials": {
+            "default": 50,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Trials",
+            "type": "integer"
+          },
+          "method": {
+            "default": "grid",
+            "description": "grid or random",
+            "title": "Method",
+            "type": "string"
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
+          "parameter_space": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameter Space"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "Base backtest parameters (start_date, end_date, etc.)",
+            "title": "Params",
+            "type": "object"
+          },
+          "random_seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Random Seed"
+          },
+          "signal": {
+            "description": "Base factor name",
+            "minLength": 1,
+            "title": "Signal",
+            "type": "string"
+          },
+          "train_ratio": {
+            "default": 0.7,
+            "maximum": 0.9,
+            "minimum": 0.3,
+            "title": "Train Ratio",
+            "type": "number"
+          },
+          "walk_forward_splits": {
+            "default": 0,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Walk Forward Splits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "signal"
+        ],
+        "title": "OptimizationRunRequest",
+        "type": "object"
+      },
+      "PipValueRequest": {
+        "description": "Compute forex pip value.",
+        "properties": {
+          "account_conversion_rate": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Account Conversion Rate",
+            "type": "number"
+          },
+          "lot_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Lot Size",
+            "type": "number"
+          },
+          "pair": {
+            "minLength": 1,
+            "title": "Pair",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pair",
+          "lot_size"
+        ],
+        "title": "PipValueRequest",
+        "type": "object"
+      },
+      "PositionLimitsRequest": {
+        "description": "Check position limit breaches.",
+        "properties": {
+          "positions": {
+            "description": "List of {name, value, limit, ...} position entries",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "minItems": 1,
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "positions"
+        ],
+        "title": "PositionLimitsRequest",
+        "type": "object"
+      },
+      "ScreenerRunRequest": {
+        "description": "Stock screener filter payload.",
+        "properties": {
+          "chart_points": {
+            "default": 252,
+            "maximum": 756.0,
+            "minimum": 30.0,
+            "title": "Chart Points",
+            "type": "integer"
+          },
+          "chart_symbol": {
+            "default": "",
+            "title": "Chart Symbol",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "data_source": {
+            "default": "local",
+            "title": "Data Source",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "filters": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Filters",
+            "type": "object"
+          },
+          "index": {
+            "default": "",
+            "title": "Index",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "percentile_filters": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Percentile Filters",
+            "type": "object"
+          },
+          "recommendation": {
+            "default": "",
+            "title": "Recommendation",
+            "type": "string"
+          },
+          "refresh_cache": {
+            "default": false,
+            "title": "Refresh Cache",
+            "type": "boolean"
+          },
+          "sector": {
+            "default": "",
+            "title": "Sector",
+            "type": "string"
+          },
+          "sort_by": {
+            "default": "upside_potential",
+            "title": "Sort By",
+            "type": "string"
+          },
+          "sort_desc": {
+            "default": true,
+            "title": "Sort Desc",
+            "type": "boolean"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "technical_scan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Scan"
+          },
+          "template": {
+            "default": "",
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "title": "ScreenerRunRequest",
+        "type": "object"
+      },
+      "SignalConstructionBacktestRequest": {
+        "description": "Run signal-construction backtest.",
+        "properties": {
+          "buy_threshold": {
+            "default": 0.2,
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Buy Threshold",
+            "type": "number"
+          },
+          "indicators": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Indicators",
+            "type": "object"
+          },
+          "interval": {
+            "default": "1d",
+            "title": "Interval",
+            "type": "string"
+          },
+          "max_symbols": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 5.0,
+            "title": "Max Symbols",
+            "type": "integer"
+          },
+          "period": {
+            "default": "6mo",
+            "title": "Period",
+            "type": "string"
+          },
+          "sell_threshold": {
+            "default": -0.2,
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Sell Threshold",
+            "type": "number"
+          },
+          "top_n": {
+            "default": 20,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          },
+          "universe": {
+            "default": "XU100",
+            "title": "Universe",
+            "type": "string"
+          }
+        },
+        "title": "SignalConstructionBacktestRequest",
+        "type": "object"
+      },
+      "SignalConstructionFiveFactorRequest": {
+        "description": "Run a five-factor rotation backtest via core service.",
+        "properties": {
+          "end_date": {
+            "default": "2025-12-31",
+            "title": "End Date",
+            "type": "string"
+          },
+          "factor_name": {
+            "default": "five_factor_rotation",
+            "title": "Factor Name",
+            "type": "string"
+          },
+          "max_position_weight": {
+            "default": 0.25,
+            "maximum": 1.0,
+            "minimum": 0.05,
+            "title": "Max Position Weight",
+            "type": "number"
+          },
+          "rebalance_frequency": {
+            "default": "monthly",
+            "title": "Rebalance Frequency",
+            "type": "string"
+          },
+          "start_date": {
+            "default": "2020-01-01",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "top_n": {
+            "default": 20,
+            "maximum": 100.0,
+            "minimum": 5.0,
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "title": "SignalConstructionFiveFactorRequest",
+        "type": "object"
+      },
+      "SignalConstructionOrthogonalizationRequest": {
+        "description": "Orthogonalization diagnostics request.",
+        "properties": {
+          "axes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Axes",
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "epsilon": {
+            "default": 1e-08,
+            "exclusiveMinimum": 0.0,
+            "title": "Epsilon",
+            "type": "number"
+          },
+          "min_overlap": {
+            "default": 20,
+            "maximum": 1000.0,
+            "minimum": 2.0,
+            "title": "Min Overlap",
+            "type": "integer"
+          }
+        },
+        "title": "SignalConstructionOrthogonalizationRequest",
+        "type": "object"
+      },
+      "SignalConstructionSnapshotRequest": {
+        "description": "Run signal-construction snapshot.",
+        "properties": {
+          "buy_threshold": {
+            "default": 0.2,
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Buy Threshold",
+            "type": "number"
+          },
+          "indicators": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Indicators",
+            "type": "object"
+          },
+          "interval": {
+            "default": "1d",
+            "title": "Interval",
+            "type": "string"
+          },
+          "max_symbols": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 5.0,
+            "title": "Max Symbols",
+            "type": "integer"
+          },
+          "period": {
+            "default": "6mo",
+            "title": "Period",
+            "type": "string"
+          },
+          "sell_threshold": {
+            "default": -0.2,
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Sell Threshold",
+            "type": "number"
+          },
+          "top_n": {
+            "default": 20,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          },
+          "universe": {
+            "default": "XU100",
+            "title": "Universe",
+            "type": "string"
+          }
+        },
+        "title": "SignalConstructionSnapshotRequest",
+        "type": "object"
+      },
+      "StressTestRequest": {
+        "description": "Portfolio stress test with factor shocks.",
+        "properties": {
+          "portfolio_value": {
+            "exclusiveMinimum": 0.0,
+            "title": "Portfolio Value",
+            "type": "number"
+          },
+          "shocks": {
+            "description": "List of {factor, shock_pct, beta} shocks",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "minItems": 1,
+            "title": "Shocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "portfolio_value",
+          "shocks"
+        ],
+        "title": "StressTestRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "BIST Quant API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/analytics/benchmark/xu100": {
+      "get": {
+        "description": "Return XU100 benchmark curve as {date,value} points.",
+        "operationId": "analytics_benchmark_xu100_api_analytics_benchmark_xu100_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Analytics Benchmark Xu100 Api Analytics Benchmark Xu100 Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Analytics Benchmark Xu100",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/analytics/run": {
+      "post": {
+        "description": "Run selected analytics methods on an equity curve.",
+        "operationId": "analytics_run_api_analytics_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Analytics Run Api Analytics Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analytics Run",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/backtest/run": {
+      "post": {
+        "operationId": "backtest_run_api_backtest_run_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "async_job",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Async Job",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Backtest Run Api Backtest Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Backtest Run",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/compliance/activity-anomalies": {
+      "post": {
+        "description": "Detect anomalous user activity from event logs.",
+        "operationId": "compliance_activity_anomalies_api_compliance_activity_anomalies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compliance Activity Anomalies Api Compliance Activity Anomalies Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compliance Activity Anomalies",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
+    "/api/compliance/check": {
+      "post": {
+        "description": "Check a transaction against compliance rules.",
+        "operationId": "compliance_check_api_compliance_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComplianceTransactionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compliance Check Api Compliance Check Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compliance Check",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
+    "/api/compliance/position-limits": {
+      "post": {
+        "description": "Check for position limit breaches.",
+        "operationId": "compliance_position_limits_api_compliance_position_limits_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionLimitsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compliance Position Limits Api Compliance Position Limits Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compliance Position Limits",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
+    "/api/compliance/rules": {
+      "get": {
+        "description": "Return the set of active compliance rules.",
+        "operationId": "compliance_rules_api_compliance_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compliance Rules Api Compliance Rules Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Compliance Rules",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
+    "/api/dashboard/macro": {
+      "get": {
+        "operationId": "dashboard_macro_api_dashboard_macro_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lookback",
+            "required": false,
+            "schema": {
+              "default": 252,
+              "maximum": 3000,
+              "minimum": 30,
+              "title": "Lookback",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dashboard Macro Api Dashboard Macro Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Macro",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/dashboard/overview": {
+      "get": {
+        "operationId": "dashboard_overview_api_dashboard_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lookback",
+            "required": false,
+            "schema": {
+              "default": 504,
+              "maximum": 3000,
+              "minimum": 30,
+              "title": "Lookback",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dashboard Overview Api Dashboard Overview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Overview",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/dashboard/regime-history": {
+      "get": {
+        "operationId": "dashboard_regime_history_api_dashboard_regime_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lookback",
+            "required": false,
+            "schema": {
+              "default": 504,
+              "maximum": 3000,
+              "minimum": 30,
+              "title": "Lookback",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dashboard Regime History Api Dashboard Regime History Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Regime History",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/factors/catalog": {
+      "get": {
+        "description": "List all available signals with categories and parameter schemas.",
+        "operationId": "factors_catalog_api_factors_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Factors Catalog Api Factors Catalog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Factors Catalog",
+        "tags": [
+          "factors"
+        ]
+      }
+    },
+    "/api/factors/combine": {
+      "post": {
+        "description": "Combine multiple factors with weighting and optional timing.",
+        "operationId": "factors_combine_api_factors_combine_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorCombineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Factors Combine Api Factors Combine Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factors Combine",
+        "tags": [
+          "factors"
+        ]
+      }
+    },
+    "/api/factors/snapshot": {
+      "post": {
+        "description": "Run cross-sectional signal scoring snapshot.",
+        "operationId": "factors_snapshot_api_factors_snapshot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Factors Snapshot Api Factors Snapshot Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factors Snapshot",
+        "tags": [
+          "factors"
+        ]
+      }
+    },
+    "/api/factors/{name}": {
+      "get": {
+        "description": "Get detailed info for a single signal/factor.",
+        "operationId": "factors_detail_api_factors__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Factors Detail Api Factors  Name  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factors Detail",
+        "tags": [
+          "factors"
+        ]
+      }
+    },
+    "/api/health/live": {
+      "get": {
+        "operationId": "health_live_api_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Live Api Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Live",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/health/ready": {
+      "get": {
+        "operationId": "health_ready_api_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Ready Api Health Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Ready",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Jobs Api Jobs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation error."
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "bist-quant"
+        ]
+      },
+      "post": {
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Job Api Jobs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported job kind."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation or payload validation error."
+          }
+        },
+        "summary": "Create Job",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "delete": {
+        "operationId": "cancel_job_api_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Job Api Jobs  Job Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Job not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation error."
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "bist-quant"
+        ]
+      },
+      "get": {
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Job Api Jobs  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Job not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation error."
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_api_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retry Job Api Jobs  Job Id  Retry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Retry request is invalid for this job."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Job not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation or payload validation error."
+          }
+        },
+        "summary": "Retry Job",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/macro/calendar": {
+      "get": {
+        "operationId": "macro_calendar_api_macro_calendar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "1w",
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Country"
+            }
+          },
+          {
+            "in": "query",
+            "name": "importance",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Importance"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Macro Calendar Api Macro Calendar Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Macro Calendar",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/meta/signals": {
+      "get": {
+        "operationId": "meta_signals_api_meta_signals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Meta Signals Api Meta Signals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Meta Signals",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/meta/system": {
+      "get": {
+        "operationId": "meta_system_api_meta_system_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Meta System Api Meta System Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Meta System",
+        "tags": [
+          "bist-quant"
+        ]
+      }
+    },
+    "/api/optimize/run": {
+      "post": {
+        "description": "Run strategy parameter optimization.\n\nBy default runs as an async job since optimization is compute-heavy.\nSet ``?async_job=false`` for synchronous execution.",
+        "operationId": "optimization_run_api_optimize_run_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "async_job",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Async Job",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizationRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Optimization Run Api Optimize Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Optimization Run",
+        "tags": [
+          "optimization"
+        ]
+      }
+    },
+    "/api/professional/crypto-sizing": {
+      "post": {
+        "description": "Compute crypto position sizing and trade plan.",
+        "operationId": "professional_crypto_sizing_api_professional_crypto_sizing_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CryptoSizingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Professional Crypto Sizing Api Professional Crypto Sizing Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Professional Crypto Sizing",
+        "tags": [
+          "professional"
+        ]
+      }
+    },
+    "/api/professional/greeks": {
+      "post": {
+        "description": "Compute Black-Scholes option Greeks.",
+        "operationId": "professional_greeks_api_professional_greeks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GreeksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Professional Greeks Api Professional Greeks Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Professional Greeks",
+        "tags": [
+          "professional"
+        ]
+      }
+    },
+    "/api/professional/pip-value": {
+      "post": {
+        "description": "Compute forex pip value for a pair and lot size.",
+        "operationId": "professional_pip_value_api_professional_pip_value_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipValueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Professional Pip Value Api Professional Pip Value Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Professional Pip Value",
+        "tags": [
+          "professional"
+        ]
+      }
+    },
+    "/api/professional/stress": {
+      "post": {
+        "description": "Run a portfolio stress test with factor shocks.",
+        "operationId": "professional_stress_api_professional_stress_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StressTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Professional Stress Api Professional Stress Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Professional Stress",
+        "tags": [
+          "professional"
+        ]
+      }
+    },
+    "/api/screener/metadata": {
+      "get": {
+        "description": "Return screener metadata: templates, filters, indexes, etc.",
+        "operationId": "screener_metadata_api_screener_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Screener Metadata Api Screener Metadata Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Screener Metadata",
+        "tags": [
+          "screener"
+        ]
+      }
+    },
+    "/api/screener/run": {
+      "post": {
+        "description": "Run the stock screener with the given filters.",
+        "operationId": "screener_run_api_screener_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenerRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Screener Run Api Screener Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Screener Run",
+        "tags": [
+          "screener"
+        ]
+      }
+    },
+    "/api/screener/sparklines": {
+      "post": {
+        "description": "Return short close-price sparkline series by symbol.\n\nRequest:\n{\n  \"symbols\": [\"THYAO\", \"GARAN\"],\n  \"points\": 60\n}",
+        "operationId": "screener_sparklines_api_screener_sparklines_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response Screener Sparklines Api Screener Sparklines Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Screener Sparklines",
+        "tags": [
+          "screener"
+        ]
+      }
+    },
+    "/api/signal-construction/backtest": {
+      "post": {
+        "description": "Run multi-indicator signal backtest.",
+        "operationId": "signal_construction_backtest_api_signal_construction_backtest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalConstructionBacktestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Signal Construction Backtest Api Signal Construction Backtest Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signal Construction Backtest",
+        "tags": [
+          "signal-construction"
+        ]
+      }
+    },
+    "/api/signal-construction/five-factor": {
+      "post": {
+        "description": "Run five-factor rotation backtest via core service.",
+        "operationId": "signal_construction_five_factor_api_signal_construction_five_factor_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalConstructionFiveFactorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Signal Construction Five Factor Api Signal Construction Five Factor Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signal Construction Five Factor",
+        "tags": [
+          "signal-construction"
+        ]
+      }
+    },
+    "/api/signal-construction/orthogonalization": {
+      "post": {
+        "description": "Return orthogonalization configuration diagnostics for selected axes.",
+        "operationId": "signal_construction_orthogonalization_api_signal_construction_orthogonalization_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalConstructionOrthogonalizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Signal Construction Orthogonalization Api Signal Construction Orthogonalization Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signal Construction Orthogonalization",
+        "tags": [
+          "signal-construction"
+        ]
+      }
+    },
+    "/api/signal-construction/snapshot": {
+      "post": {
+        "description": "Run multi-indicator signal snapshot.",
+        "operationId": "signal_construction_snapshot_api_signal_construction_snapshot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalConstructionSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Signal Construction Snapshot Api Signal Construction Snapshot Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signal Construction Snapshot",
+        "tags": [
+          "signal-construction"
+        ]
+      }
+    }
+  }
+}

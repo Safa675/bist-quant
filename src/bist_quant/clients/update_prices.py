@@ -11,13 +11,15 @@ Both CSV and Parquet versions are kept in sync for flexibility.
 Parquet files are used for faster data loading in the portfolio engine.
 
 Usage:
-    python src/bist_quant/data_pipeline/fetcher_scripts/update_prices.py
-    python src/bist_quant/data_pipeline/fetcher_scripts/update_prices.py --source auto
-    python src/bist_quant/data_pipeline/fetcher_scripts/update_prices.py --source borsapy
-    python src/bist_quant/data_pipeline/fetcher_scripts/update_prices.py --source yfinance --dry-run
+    python -m bist_quant.clients.update_prices
+    python -m bist_quant.clients.update_prices --source auto
+    python -m bist_quant.clients.update_prices --source borsapy
+    python -m bist_quant.clients.update_prices --source yfinance --dry-run
 
-Schedule with cron (every weekday at 18:45 Istanbul time):
-    45 18 * * 1-5  cd "/home/safa/Documents/Market Research" && python src/bist_quant/data_pipeline/fetcher_scripts/update_prices.py >> data/update.log 2>&1
+Automated daily refresh (preferred — runs all fetchers + cache warm):
+    bash scripts/daily_data_refresh.sh
+
+    Scheduled via systemd timer — see deploy/bist-quant-data-refresh.timer
 """
 
 import logging
@@ -283,7 +285,7 @@ def update_bist_prices(dry_run: bool = False, source: str = "auto") -> None:
             if adapter.client is not None:
                 new_df = adapter.load_prices(
                     symbols=tickers,
-                    period="14y", 
+                    period="5y", 
                 )
                 if not new_df.empty:
                     new_df = _coerce_price_columns(new_df, BIST_COLS)

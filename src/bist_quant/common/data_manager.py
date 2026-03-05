@@ -44,7 +44,7 @@ def build_consolidated_prices_panel(
     output_path: Path | None = None,
     *,
     force: bool = False,
-    pattern: str = "*_max_1d.parquet",
+    pattern: str = "*_1d.parquet",
 ) -> Path:
     """Build a single consolidated prices parquet from per-ticker cache files.
 
@@ -102,6 +102,13 @@ def build_consolidated_prices_panel(
             if "Ticker" not in df.columns:
                 ticker = path.stem.split("_")[0]
                 df["Ticker"] = ticker
+            # Normalize timezone: strip tz to avoid mixed tz-aware/tz-naive
+            # concat silently dropping rows via pd.to_datetime coercion
+            if "Date" in df.columns:
+                dt = pd.to_datetime(df["Date"], errors="coerce")
+                if hasattr(dt.dt, "tz") and dt.dt.tz is not None:
+                    dt = dt.dt.tz_localize(None)
+                df["Date"] = dt
             frames.append(df)
         except Exception as exc:
             logger.debug("  Skipping %s: %s", path.name, exc)
@@ -162,7 +169,7 @@ class DataManager:
         from bist_quant.common.data_paths import get_data_paths
         _paths = get_data_paths()
         prices_dir = _paths.borsapy_cache_dir / "prices"
-        if not prices_dir.exists() or not any(prices_dir.glob("*_max_1d.parquet")):
+        if not prices_dir.exists() or not any(prices_dir.glob("*_1d.parquet")):
             return None
         try:
             return build_consolidated_prices_panel(_paths.borsapy_cache_dir)

@@ -313,6 +313,13 @@ def _consolidate(cache) -> dict[str, Path]:
                     df = df.rename(columns={"index": "Date"})
                 elif "Date" not in df.columns and df.index.name == "Date":
                     df = df.reset_index()
+                # Normalize timezone: strip tz to avoid mixed tz-aware/tz-naive
+                # concat producing NaT when coerced by pd.to_datetime
+                if "Date" in df.columns:
+                    dt = pd.to_datetime(df["Date"], errors="coerce")
+                    if hasattr(dt.dt, "tz") and dt.dt.tz is not None:
+                        dt = dt.dt.tz_localize(None)
+                    df["Date"] = dt
                 price_frames.append(df)
             except Exception:
                 continue

@@ -26,6 +26,26 @@ pip install -e ".[ml]"          # machine-learning extras
 
 ---
 
+## Web App Stack (Next.js + FastAPI)
+
+The migration stack now runs as separate frontend/backend services.
+
+Local dual-run (dev):
+
+```bash
+./scripts/start_next_stack.sh
+```
+
+Production-like local run:
+
+```bash
+./scripts/start_next_stack_prod.sh
+```
+
+Deployment templates and cutover notes live in [`deploy/README.md`](deploy/README.md).
+
+---
+
 ## Quick Start
 
 ### Run a Factor Backtest

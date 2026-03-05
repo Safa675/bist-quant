@@ -1,0 +1,1080 @@
+{
+  "generated_at": "2026-03-04T18:56:39.570319+00:00",
+  "phase": "Phase 0 Contract Freeze",
+  "scope": {
+    "route_coverage": "all_next_routes_plus_app_shell",
+    "sample_mode": "mocked_live_harness",
+    "backend_source_of_truth": "FastAPI"
+  },
+  "routes": [
+    {
+      "route": "/",
+      "page": "frontend/src/app/page.tsx",
+      "streamlit_source": "app/pages/1_Dashboard.py",
+      "frontend_calls": [],
+      "endpoints": [],
+      "execution_mode": "redirect",
+      "status": "match",
+      "notes": "Root route redirects to /dashboard."
+    },
+    {
+      "route": "/dashboard",
+      "page": "frontend/src/app/dashboard/page.tsx",
+      "streamlit_source": "app/pages/1_Dashboard.py",
+      "frontend_calls": [
+        "getDashboardOverview"
+      ],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/dashboard/overview"
+        }
+      ],
+      "execution_mode": "sync",
+      "status": "match",
+      "notes": "Core dashboard overview path is aligned."
+    },
+    {
+      "route": "/backtest",
+      "page": "frontend/src/app/backtest/page.tsx",
+      "streamlit_source": "app/pages/2_Backtest.py",
+      "frontend_calls": [
+        "getFactorCatalog",
+        "createJob",
+        "getJob",
+        "listJobs",
+        "cancelJob"
+      ],
+      "endpoints": [
+        {
+          "method": "DELETE",
+          "path": "/api/jobs/{job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/jobs"
+        },
+        {
+          "method": "GET",
+          "path": "/api/jobs/{job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/meta/signals"
+        },
+        {
+          "method": "POST",
+          "path": "/api/jobs"
+        }
+      ],
+      "execution_mode": "async_job",
+      "status": "adapter",
+      "notes": "Backtest job result is normalized by toBacktestUiResult inside getJob()."
+    },
+    {
+      "route": "/factor-lab",
+      "page": "frontend/src/app/factor-lab/page.tsx",
+      "streamlit_source": "app/pages/3_Factor_Lab.py",
+      "frontend_calls": [
+        "getFactorCatalog",
+        "getFactorDetail",
+        "createJob",
+        "getJob"
+      ],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/factors/{name}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/jobs/{job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/meta/signals"
+        },
+        {
+          "method": "POST",
+          "path": "/api/jobs"
+        }
+      ],
+      "execution_mode": "async_job",
+      "status": "mismatch",
+      "notes": "Current UI sends signals as string[] while backend expects [{name, weight}] for factor_combine jobs."
+    },
+    {
+      "route": "/signal-construction",
+      "page": "frontend/src/app/signal-construction/page.tsx",
+      "streamlit_source": "app/pages/4_Signal_Construction.py",
+      "frontend_calls": [
+        "getFactorCatalog",
+        "createJob",
+        "getJob"
+      ],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/jobs/{job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/meta/signals"
+        },
+        {
+          "method": "POST",
+          "path": "/api/jobs"
+        }
+      ],
+      "execution_mode": "async_job",
+      "status": "adapter",
+      "notes": "Uses backtest job path; requires consistent BacktestUiResult mapping for all chart paths."
+    },
+    {
+      "route": "/screener",
+      "page": "frontend/src/app/screener/page.tsx",
+      "streamlit_source": "app/pages/5_Screener.py",
+      "frontend_calls": [
+        "runScreener"
+      ],
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/screener/run"
+        }
+      ],
+      "execution_mode": "sync",
+      "status": "adapter",
+      "notes": "Result count/rows normalized by toScreenerUiResult."
+    },
+    {
+      "route": "/analytics",
+      "page": "frontend/src/app/analytics/page.tsx",
+      "streamlit_source": "app/pages/6_Analytics.py",
+      "frontend_calls": [
+        "createJob",
+        "getJob"
+      ],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/jobs/{job_id}"
+        },
+        {
+          "method": "POST",
+          "path": "/api/jobs"
+        }
+      ],
+      "execution_mode": "async_job_noncanonical",
+      "status": "mismatch",
+      "notes": "Canonical target is direct POST /api/analytics/run; current UI uses lightweight analytics job payload."
+    },
+    {
+      "route": "/optimization",
+      "page": "frontend/src/app/optimization/page.tsx",
+      "streamlit_source": "app/pages/7_Optimization.py",
+      "frontend_calls": [
+        "getFactorCatalog",
+        "createJob",
+        "getJob"
+      ],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/jobs/{job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/meta/signals"
+        },
+        {
+          "method": "POST",
+          "path": "/api/jobs"
+        }
+      ],
+      "execution_mode": "async_job",
+      "status": "mismatch",
+      "notes": "UI request shape diverges from backend OptimizationRunRequest (parameter_space expected)."
+    },
+    {
+      "route": "/professional",
+      "page": "frontend/src/app/professional/page.tsx",
+      "streamlit_source": "app/pages/8_Professional.py",
+      "frontend_calls": [
+        "calculateGreeks",
+        "runStressTest",
+        "calculateCryptoSizing"
+      ],
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/professional/crypto-sizing"
+        },
+        {
+          "method": "POST",
+          "path": "/api/professional/greeks"
+        },
+        {
+          "method": "POST",
+          "path": "/api/professional/stress"
+        }
+      ],
+      "execution_mode": "sync",
+      "status": "match",
+      "notes": "Direct endpoint mapping is aligned."
+    },
+    {
+      "route": "/compliance",
+      "page": "frontend/src/app/compliance/page.tsx",
+      "streamlit_source": "app/pages/9_Compliance.py",
+      "frontend_calls": [
+        "getDefaultComplianceRules",
+        "runComplianceCheck",
+        "checkPositionLimits"
+      ],
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/compliance/rules"
+        },
+        {
+          "method": "POST",
+          "path": "/api/compliance/check"
+        },
+        {
+          "method": "POST",
+          "path": "/api/compliance/position-limits"
+        }
+      ],
+      "execution_mode": "sync",
+      "status": "adapter",
+      "notes": "UI aliases comparator->operator and passed->status via adapters."
+    },
+    {
+      "route": "/agents",
+      "page": "frontend/src/app/agents/page.tsx",
+      "streamlit_source": "app/pages/10_Agents.py",
+      "frontend_calls": [],
+      "endpoints": [],
+      "execution_mode": "placeholder",
+      "status": "placeholder",
+      "notes": "Intentional beta placeholder (no backend dependencies)."
+    }
+  ],
+  "shared_surfaces": [
+    {
+      "surface": "AppShell",
+      "path": "frontend/src/components/shared/app-shell.tsx",
+      "frontend_calls": [
+        {
+          "method": "GET",
+          "path": "/api/dashboard/overview",
+          "purpose": "Regime label badge (lookback=30)"
+        }
+      ],
+      "status": "match"
+    }
+  ],
+  "frontend_api_surface": {
+    "calculateCryptoSizing": [
+      {
+        "method": "POST",
+        "path": "/api/professional/crypto-sizing"
+      }
+    ],
+    "calculateGreeks": [
+      {
+        "method": "POST",
+        "path": "/api/professional/greeks"
+      }
+    ],
+    "cancelJob": [
+      {
+        "method": "DELETE",
+        "path": "/api/jobs/{job_id}"
+      }
+    ],
+    "checkPositionLimits": [
+      {
+        "method": "POST",
+        "path": "/api/compliance/position-limits"
+      }
+    ],
+    "combineFactors": [
+      {
+        "method": "POST",
+        "path": "/api/jobs"
+      }
+    ],
+    "createJob": [
+      {
+        "method": "POST",
+        "path": "/api/jobs"
+      }
+    ],
+    "getDashboardMacro": [
+      {
+        "method": "GET",
+        "path": "/api/dashboard/macro"
+      }
+    ],
+    "getDashboardOverview": [
+      {
+        "method": "GET",
+        "path": "/api/dashboard/overview"
+      }
+    ],
+    "getDashboardRegimeHistory": [
+      {
+        "method": "GET",
+        "path": "/api/dashboard/regime-history"
+      }
+    ],
+    "getDefaultComplianceRules": [
+      {
+        "method": "GET",
+        "path": "/api/compliance/rules"
+      }
+    ],
+    "getFactorCatalog": [
+      {
+        "method": "GET",
+        "path": "/api/meta/signals"
+      }
+    ],
+    "getFactorDetail": [
+      {
+        "method": "GET",
+        "path": "/api/factors/{name}"
+      }
+    ],
+    "getHealthStatus": [
+      {
+        "method": "GET",
+        "path": "/api/health/live"
+      }
+    ],
+    "getJob": [
+      {
+        "method": "GET",
+        "path": "/api/jobs/{job_id}"
+      }
+    ],
+    "getMacroCalendar": [
+      {
+        "method": "GET",
+        "path": "/api/macro/calendar"
+      }
+    ],
+    "getSparklines": [
+      {
+        "method": "POST",
+        "path": "/api/screener/sparklines"
+      }
+    ],
+    "getSystemMeta": [
+      {
+        "method": "GET",
+        "path": "/api/meta/system"
+      }
+    ],
+    "listJobs": [
+      {
+        "method": "GET",
+        "path": "/api/jobs"
+      }
+    ],
+    "retryJob": [
+      {
+        "method": "POST",
+        "path": "/api/jobs/{job_id}/retry"
+      }
+    ],
+    "runAnalytics": [
+      {
+        "method": "POST",
+        "path": "/api/analytics/run"
+      }
+    ],
+    "runBacktest": [
+      {
+        "method": "POST",
+        "path": "/api/backtest/run"
+      }
+    ],
+    "runComplianceCheck": [
+      {
+        "method": "POST",
+        "path": "/api/compliance/check"
+      }
+    ],
+    "runOptimization": [
+      {
+        "method": "POST",
+        "path": "/api/jobs"
+      }
+    ],
+    "runScreener": [
+      {
+        "method": "POST",
+        "path": "/api/screener/run"
+      }
+    ],
+    "runStressTest": [
+      {
+        "method": "POST",
+        "path": "/api/professional/stress"
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "method": "DELETE",
+      "path": "/api/jobs/{job_id}",
+      "openapi_path": "/api/jobs/{job_id}",
+      "request_schema": null,
+      "response_keys": [
+        "cancelled",
+        "id"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.DELETE /api/jobs/{job_id}"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/rules",
+      "openapi_path": "/api/compliance/rules",
+      "request_schema": null,
+      "response_keys": [
+        "rules"
+      ],
+      "status_codes": [
+        200
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/compliance/rules"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/macro",
+      "openapi_path": "/api/dashboard/macro",
+      "request_schema": null,
+      "response_keys": [
+        "changes",
+        "series"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/dashboard/macro"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "openapi_path": "/api/dashboard/overview",
+      "request_schema": null,
+      "response_keys": [
+        "date_range",
+        "defaults",
+        "kpi",
+        "lookback",
+        "macro",
+        "regime",
+        "timeline"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/dashboard/overview"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/regime-history",
+      "openapi_path": "/api/dashboard/regime-history",
+      "request_schema": null,
+      "response_keys": [
+        "current",
+        "distribution",
+        "label",
+        "series"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/dashboard/regime-history"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/factors/{name}",
+      "openapi_path": "/api/factors/{name}",
+      "request_schema": null,
+      "response_keys": [
+        "category",
+        "description",
+        "name",
+        "parameters"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/factors/{name}"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/live",
+      "openapi_path": "/api/health/live",
+      "request_schema": null,
+      "response_keys": [
+        "ok",
+        "service"
+      ],
+      "status_codes": [
+        200
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/health/live"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/jobs",
+      "openapi_path": "/api/jobs",
+      "request_schema": null,
+      "response_keys": [
+        "count",
+        "jobs"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/jobs"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/jobs/{job_id}",
+      "openapi_path": "/api/jobs/{job_id}",
+      "request_schema": null,
+      "response_keys": [
+        "created_at",
+        "error",
+        "id",
+        "kind",
+        "meta",
+        "request",
+        "result",
+        "status",
+        "updated_at"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/jobs/{job_id}"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/macro/calendar",
+      "openapi_path": "/api/macro/calendar",
+      "request_schema": null,
+      "response_keys": [
+        "country",
+        "events",
+        "importance",
+        "period"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/macro/calendar"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/signals",
+      "openapi_path": "/api/meta/signals",
+      "request_schema": null,
+      "response_keys": [
+        "count",
+        "signals"
+      ],
+      "status_codes": [
+        200
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/meta/signals"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/system",
+      "openapi_path": "/api/meta/system",
+      "request_schema": null,
+      "response_keys": [
+        "data_dir",
+        "python",
+        "services",
+        "status"
+      ],
+      "status_codes": [
+        200
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.GET /api/meta/system"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/analytics/run",
+      "openapi_path": "/api/analytics/run",
+      "request_schema": "#/components/schemas/AnalyticsRunRequest",
+      "response_keys": [
+        "methods",
+        "performance",
+        "risk",
+        "rolling",
+        "stress",
+        "transaction_costs"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/analytics/run"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/backtest/run",
+      "openapi_path": "/api/backtest/run",
+      "request_schema": "#/components/schemas/BacktestRequest",
+      "response_keys": [
+        "drawdown_curve",
+        "equity_curve",
+        "metrics",
+        "monthly_returns",
+        "top_holdings"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/backtest/run"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/compliance/check",
+      "openapi_path": "/api/compliance/check",
+      "request_schema": "#/components/schemas/ComplianceTransactionRequest",
+      "response_keys": [
+        "hits",
+        "passed",
+        "transaction_id"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/compliance/check"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/compliance/position-limits",
+      "openapi_path": "/api/compliance/position-limits",
+      "request_schema": "#/components/schemas/PositionLimitsRequest",
+      "response_keys": [
+        "breach_count",
+        "breaches",
+        "total_checked"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/compliance/position-limits"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/jobs",
+      "openapi_path": "/api/jobs",
+      "request_schema": "#/components/schemas/JobCreateRequest",
+      "response_keys": [
+        "created_at",
+        "error",
+        "id",
+        "kind",
+        "meta",
+        "request",
+        "result",
+        "status",
+        "updated_at"
+      ],
+      "status_codes": [
+        200,
+        400,
+        422
+      ],
+      "error_contract": {
+        "shape": {
+          "detail": {
+            "code": "string",
+            "detail": "string",
+            "hint": "string",
+            "errors": "list[object] (optional)"
+          }
+        },
+        "notable_statuses": [
+          400,
+          422
+        ]
+      },
+      "sample_refs": [
+        "samples.POST /api/jobs",
+        "errors.POST /api/jobs::unsupported_kind",
+        "errors.POST /api/jobs::invalid_backtest_payload",
+        "errors.POST /api/jobs::optimize_missing_parameter_space"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/jobs/{job_id}/retry",
+      "openapi_path": "/api/jobs/{job_id}/retry",
+      "request_schema": null,
+      "response_keys": [
+        "created_at",
+        "error",
+        "id",
+        "kind",
+        "meta",
+        "request",
+        "status",
+        "updated_at"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/jobs/{job_id}/retry"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/professional/crypto-sizing",
+      "openapi_path": "/api/professional/crypto-sizing",
+      "request_schema": "#/components/schemas/CryptoSizingRequest",
+      "response_keys": [
+        "estimated_fees",
+        "liquidation_price",
+        "margin_required",
+        "max_loss",
+        "notional",
+        "pair",
+        "quantity",
+        "side"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/professional/crypto-sizing"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/professional/greeks",
+      "openapi_path": "/api/professional/greeks",
+      "request_schema": "#/components/schemas/GreeksRequest",
+      "response_keys": [
+        "delta",
+        "gamma",
+        "rho_per_1pct",
+        "theoretical_price",
+        "theta_per_day",
+        "vega_per_1pct"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/professional/greeks"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/professional/stress",
+      "openapi_path": "/api/professional/stress",
+      "request_schema": "#/components/schemas/StressTestRequest",
+      "response_keys": [
+        "by_factor",
+        "scenario_loss_pct",
+        "scenario_loss_value"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/professional/stress"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/screener/run",
+      "openapi_path": "/api/screener/run",
+      "request_schema": "#/components/schemas/ScreenerRunRequest",
+      "response_keys": [
+        "meta",
+        "rows"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/screener/run"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/screener/sparklines",
+      "openapi_path": "/api/screener/sparklines",
+      "request_schema": "Payload",
+      "response_keys": [
+        "GARAN",
+        "THYAO"
+      ],
+      "status_codes": [
+        200,
+        422
+      ],
+      "error_contract": null,
+      "sample_refs": [
+        "samples.POST /api/screener/sparklines"
+      ]
+    }
+  ],
+  "dto_mappings": [
+    {
+      "ui_dto": "BacktestUiResult",
+      "backend_field": "equity_curve[].strategy | equity_curve[].value",
+      "ui_field": "equity_curve[].strategy",
+      "transform": "prefer strategy, fallback to value",
+      "notes": "Supports mixed backend payload shapes."
+    },
+    {
+      "ui_dto": "BacktestUiResult",
+      "backend_field": "drawdown_curve[].drawdown | drawdown_curve[].value",
+      "ui_field": "drawdown_curve[].drawdown",
+      "transform": "prefer drawdown, fallback to value",
+      "notes": "Normalizes historical drawdown formats."
+    },
+    {
+      "ui_dto": "BacktestUiResult",
+      "backend_field": "monthly_returns (array | object)",
+      "ui_field": "monthly_returns[year][month]",
+      "transform": "month-key normalization",
+      "notes": "Accepts both keyed and row-oriented payloads."
+    },
+    {
+      "ui_dto": "BacktestUiResult",
+      "backend_field": "holdings[] | top_holdings[]",
+      "ui_field": "holdings[]",
+      "transform": "symbol/ticker aliasing",
+      "notes": "Unifies holdings shape for table/chart consumers."
+    },
+    {
+      "ui_dto": "AnalyticsUiResult",
+      "backend_field": "performance.* + risk.*",
+      "ui_field": "metrics.*",
+      "transform": "merged metrics map",
+      "notes": "Single KPI source in UI."
+    },
+    {
+      "ui_dto": "AnalyticsUiResult",
+      "backend_field": "rolling[].rolling_sharpe_63d | rolling[].rolling_sharpe",
+      "ui_field": "rolling[].rolling_sharpe",
+      "transform": "alias fallback",
+      "notes": "Backward compatibility with legacy rolling keys."
+    },
+    {
+      "ui_dto": "OptimizationUiResult",
+      "backend_field": "best_trial.params",
+      "ui_field": "best_params",
+      "transform": "direct projection",
+      "notes": "Primary sweep summary."
+    },
+    {
+      "ui_dto": "OptimizationUiResult",
+      "backend_field": "best_trial.metrics[metricKey] | best_trial.score",
+      "ui_field": "best_metric",
+      "transform": "metric-key fallback to score",
+      "notes": "Handles metric-key drift."
+    },
+    {
+      "ui_dto": "OptimizationUiResult",
+      "backend_field": "trials[]",
+      "ui_field": "sweep_results[]",
+      "transform": "numeric params + metric extraction",
+      "notes": "Feeds heatmap/scatter visuals."
+    },
+    {
+      "ui_dto": "ScreenerUiResult",
+      "backend_field": "count | meta.total_matches | rows.length",
+      "ui_field": "count",
+      "transform": "fallback cascade",
+      "notes": "Stabilizes KPI count across schema variants."
+    },
+    {
+      "ui_dto": "ComplianceUiResult",
+      "backend_field": "status | passed",
+      "ui_field": "status",
+      "transform": "passed=false -> FAIL else PASS",
+      "notes": "Wave 1 frozen alias rule: passed -> status."
+    },
+    {
+      "ui_dto": "ComplianceUiResult",
+      "backend_field": "rule.comparator | rule.operator",
+      "ui_field": "rule.operator",
+      "transform": "comparator alias to operator",
+      "notes": "Wave 1 frozen alias rule: comparator -> operator."
+    },
+    {
+      "ui_dto": "ComplianceUiResult",
+      "backend_field": "hit.limit | rule.threshold",
+      "ui_field": "hits[].limit",
+      "transform": "fallback to rule threshold",
+      "notes": "Ensures deterministic limit display."
+    },
+    {
+      "ui_dto": "ScreenerUiResult",
+      "backend_field": "rows[].return_1m (fraction)",
+      "ui_field": "table cell 1M Ret %",
+      "transform": "display multiply by 100",
+      "notes": "Frozen metric unit annotation for Wave 1."
+    }
+  ],
+  "dto_freeze": {
+    "frozen_for_wave1": [
+      "BacktestUiResult",
+      "AnalyticsUiResult",
+      "OptimizationUiResult",
+      "ComplianceUiResult",
+      "ScreenerUiResult"
+    ],
+    "alias_rules": [
+      "comparator -> operator",
+      "passed -> status"
+    ],
+    "unit_annotations": [
+      "Screener return_1m is fractional in backend and rendered as percentage in UI.",
+      "Backtest/analytics drawdown values remain ratio-scale unless explicitly formatted in UI."
+    ],
+    "analytics_canonical_execution": {
+      "canonical": "POST /api/analytics/run",
+      "non_canonical": "POST /api/jobs (kind=analytics) unless schema parity is guaranteed"
+    }
+  },
+  "drift_register": [
+    {
+      "surface": "Factor Lab",
+      "classification": "mismatch",
+      "detail": "combine payload currently sends signals:string[] while backend contract expects signals:[{name, weight}].",
+      "resolution_wave": "Wave 1"
+    },
+    {
+      "surface": "Analytics",
+      "classification": "mismatch",
+      "detail": "UI uses async jobs endpoint with non-canonical method labels; canonical path is POST /api/analytics/run.",
+      "resolution_wave": "Wave 1"
+    },
+    {
+      "surface": "Optimization",
+      "classification": "mismatch",
+      "detail": "UI payload diverges from OptimizationRunRequest parameter_space contract.",
+      "resolution_wave": "Wave 1"
+    },
+    {
+      "surface": "Backtest + Signal Construction",
+      "classification": "adapter",
+      "detail": "Adapter normalization required for value/strategy keys and drawdown/value variants.",
+      "resolution_wave": "Wave 1"
+    },
+    {
+      "surface": "Compliance",
+      "classification": "adapter",
+      "detail": "Alias mapping required for comparator/operator and passed/status.",
+      "resolution_wave": "Wave 1"
+    },
+    {
+      "surface": "Screener",
+      "classification": "adapter",
+      "detail": "Count fallback and metric-unit display normalization required.",
+      "resolution_wave": "Wave 1"
+    }
+  ],
+  "unknown_field_register": [],
+  "verification_targets": {
+    "must_fail_if": [
+      "any_next_route_missing",
+      "any_consumed_endpoint_missing",
+      "any_dto_mapping_unresolved",
+      "unknown_field_register_not_empty",
+      "canonical_sample_missing_for_consumed_endpoint"
+    ]
+  }
+}
