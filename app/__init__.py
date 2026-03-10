@@ -1,1 +1,0 @@
-# BIST Quant Research Cockpit

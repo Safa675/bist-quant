@@ -75,6 +75,7 @@ tasks/
 # ===== NON-LIBRARY APP / DEV SURFACES =====
 .streamlit/
 frontend/
+app/
 deploy/
 playwright-report/
 test-results/
