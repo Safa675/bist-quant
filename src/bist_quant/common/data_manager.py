@@ -167,6 +167,7 @@ class DataManager:
     def _ensure_consolidated_panel(self) -> Path | None:
         """Build or refresh the consolidated prices panel if per-ticker files exist."""
         from bist_quant.common.data_paths import get_data_paths
+
         _paths = get_data_paths()
         prices_dir = _paths.borsapy_cache_dir / "prices"
         if not prices_dir.exists() or not any(prices_dir.glob("*_1d.parquet")):
@@ -177,7 +178,7 @@ class DataManager:
             logger.warning("  ⚠️  Failed to build consolidated panel: %s", exc)
             return None
 
-    def load_all(self, use_cache: bool = True) -> LoadedMarketData:
+    def load_all(self, use_cache: bool = True, require_regime: bool = True) -> LoadedMarketData:
         if use_cache and self._cache is not None:
             return self._cache
 
@@ -188,6 +189,7 @@ class DataManager:
         start_time = time.time()
 
         from bist_quant.common.data_paths import get_data_paths
+
         _paths = get_data_paths()
 
         # ── Ensure consolidated panel is fresh ───────────────────────────
@@ -213,8 +215,7 @@ class DataManager:
 
         if prices is None or prices.empty:
             raise ValueError(
-                "Price data could not be loaded. "
-                "Run the fetch pipeline to populate borsapy_cache."
+                "Price data could not be loaded. Run the fetch pipeline to populate borsapy_cache."
             )
 
         close_df = self.loader.build_close_panel(prices)
@@ -225,20 +226,27 @@ class DataManager:
 
         fundamentals = self.loader.load_fundamentals()
 
-        regime_series = self.loader.load_regime_predictions()
-        loaded_allocations = self.loader.load_regime_allocations()
-        if loaded_allocations:
-            regime_allocations = self.base_regime_allocations.copy()
-            regime_allocations.update(loaded_allocations)
-            logger.info("  ✅ Using regime allocations from regime_labels.json:")
-            for regime, allocation in sorted(
-                regime_allocations.items(),
-                key=lambda item: str(item[0]),
-            ):
-                logger.info(f"    {regime}: {allocation:.2f}")
+        if require_regime:
+            regime_series = self.loader.load_regime_predictions()
+            loaded_allocations = self.loader.load_regime_allocations()
+            if loaded_allocations:
+                regime_allocations = self.base_regime_allocations.copy()
+                regime_allocations.update(loaded_allocations)
+                logger.info("  ✅ Using regime allocations from regime_labels.json:")
+                for regime, allocation in sorted(
+                    regime_allocations.items(),
+                    key=lambda item: str(item[0]),
+                ):
+                    logger.info(f"    {regime}: {allocation:.2f}")
+            else:
+                regime_allocations = self.base_regime_allocations.copy()
+                logger.info(
+                    "  ℹ️  Using fallback regime allocations from portfolio_engine constants."
+                )
         else:
+            regime_series = pd.Series(dtype=object)
             regime_allocations = self.base_regime_allocations.copy()
-            logger.info("  ℹ️  Using fallback regime allocations from portfolio_engine constants.")
+            logger.info("  ℹ️  Skipping regime predictions because regime filter is disabled.")
 
         xautry_file = _paths.usdtry_file
         xautry_prices = self.loader.load_xautry_prices(xautry_file)

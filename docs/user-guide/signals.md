@@ -111,7 +111,7 @@ print(signal_df.shape)   # (dates, tickers)
 ```python
 from bist_quant import PortfolioEngine
 
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(data_loader=loader, options={"use_regime_filter": False})
 
 # By registered name (runs full factor_builders.py pipeline)
 result = engine.run_factor("momentum")

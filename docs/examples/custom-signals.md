@@ -44,9 +44,9 @@ from bist_quant.signals.factory import SignalFactory
 SignalFactory.register("my_reversal", reversal_signal)
 
 loader = DataLoader(data_paths=DataPaths())
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(data_loader=loader, options={"use_regime_filter": False})
 result = engine.run_factor("my_reversal")
-print(result.metrics)
+print({k: result[k] for k in ("cagr", "sharpe", "max_drawdown")})
 ```
 
 ## Alternatively: Pass a Prebuilt Panel
@@ -55,7 +55,7 @@ print(result.metrics)
 dates  = loader.build_close_panel().index
 panel  = reversal_signal(dates, loader, config={})
 result = engine.run_factor_from_panel(panel)
-print(result.metrics)
+print({k: result[k] for k in ("cagr", "sharpe", "max_drawdown")})
 ```
 
 ## Subclass BaseSignal (Standalone Factor)

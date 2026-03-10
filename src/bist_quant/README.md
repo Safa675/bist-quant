@@ -103,14 +103,14 @@ All builders are registered in category module `BUILDERS` dicts and centralized 
 ```python
 from bist_quant import PortfolioEngine, DataLoader, DataPaths
 
-# Resolve paths (reads BIST_DATA_DIR env var or auto-detects repo root)
+# Resolve user-scoped defaults or BIST_* overrides
 paths = DataPaths()
 
 # Load all market data
 loader = DataLoader(data_paths=paths)
 
 # Run a strategy backtest
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(data_loader=loader, options={"use_regime_filter": False})
 result = engine.run_factor("momentum")
-print(result.metrics)
+print({k: result[k] for k in ("cagr", "sharpe", "max_drawdown")})
 ```

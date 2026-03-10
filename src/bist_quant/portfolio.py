@@ -363,7 +363,10 @@ class PortfolioEngine:
 
     def load_all_data(self, use_cache: bool = True):
         """Load all required datasets and cache prepared data panels."""
-        loaded_data = self.data_manager.load_all(use_cache=use_cache)
+        loaded_data = self.data_manager.load_all(
+            use_cache=use_cache,
+            require_regime=bool(self.options.get("use_regime_filter", True)),
+        )
         self._apply_loaded_data(loaded_data)
 
     def _build_market_cap_panel(
@@ -543,7 +546,7 @@ class PortfolioEngine:
         try:
             exporter = SignalExporter(signal_name=factor_name)
             exporter.export_factor_scores(signals, filename="raw_scores.csv")
-            
+
             # If the strategy generated detailed intermediate scores (like value_scores, momentum_scores),
             # we can export them too from the factor_details.
             if isinstance(factor_details, dict):
@@ -1320,5 +1323,5 @@ if __name__ == "__main__":
     main()
     total_elapsed = time.time() - total_start
     logger.info("\n" + "=" * 70)
-    logger.info(f"TOTAL RUNTIME: {total_elapsed:.1f} seconds ({total_elapsed/60:.1f} minutes)")
+    logger.info(f"TOTAL RUNTIME: {total_elapsed:.1f} seconds ({total_elapsed / 60:.1f} minutes)")
     logger.info("=" * 70)

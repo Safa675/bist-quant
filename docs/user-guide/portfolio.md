@@ -8,7 +8,7 @@
 from bist_quant import PortfolioEngine, DataLoader, DataPaths
 
 loader = DataLoader(data_paths=DataPaths())
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(data_loader=loader, options={"use_regime_filter": False})
 ```
 
 ## Running a Strategy

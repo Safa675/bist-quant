@@ -14,7 +14,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Final
+from typing import TYPE_CHECKING, Any, Dict, Final
 
 import pandas as pd
 
@@ -28,9 +28,20 @@ from bist_quant.clients.derivatives_provider import DerivativesProvider
 from bist_quant.clients.fx_enhanced_provider import FXEnhancedProvider
 from bist_quant.clients.macro_adapter import MacroAdapter
 from bist_quant.common.panel_cache import PanelCache
-from bist_quant.common.portfolio_analytics import PortfolioAnalyticsAdapter
 from bist_quant.settings import PROJECT_ROOT
 from .data_paths import DataPaths, get_data_paths
+
+if TYPE_CHECKING:
+    from bist_quant.common.portfolio_analytics import PortfolioAnalyticsAdapter
+else:
+    PortfolioAnalyticsAdapter = Any
+
+try:
+    from bist_quant.common.portfolio_analytics import (
+        PortfolioAnalyticsAdapter as _PortfolioAnalyticsAdapter,
+    )
+except Exception:
+    _PortfolioAnalyticsAdapter = None
 
 logger = logging.getLogger(__name__)
 FETCHER_DIR: Final[Path] = PROJECT_ROOT / "src" / "bist_quant" / "fetcher"
@@ -127,9 +138,8 @@ class DataLoader:
         # Data source priority: "auto" | "borsapy" | "local"
         # Since we migrated to strictly borsapy, auto now defaults entirely to borsapy
         self._data_source_priority = (
-            data_source_priority
-            or os.getenv("BIST_DATA_SOURCE", "borsapy")
-        ).strip().lower()
+            (data_source_priority or os.getenv("BIST_DATA_SOURCE", "borsapy")).strip().lower()
+        )
         if self._data_source_priority == "auto":
             self._data_source_priority = "borsapy"
 
@@ -157,7 +167,9 @@ class DataLoader:
 
         self._borsapy_adapter = BorsapyAdapter(self)
         self._macro_adapter = MacroAdapter(self, macro_events_path=resolved_macro_events)
-        self._portfolio_analytics_adapter = PortfolioAnalyticsAdapter(self)
+        self._portfolio_analytics_adapter = (
+            _PortfolioAnalyticsAdapter(self) if _PortfolioAnalyticsAdapter is not None else None
+        )
         self._native_borsapy_module = None
 
         # Freshness gate controls (defaults are strict for production safety).
@@ -191,6 +203,11 @@ class DataLoader:
 
     @property
     def portfolio_analytics(self) -> PortfolioAnalyticsAdapter:
+        if self._portfolio_analytics_adapter is None:
+            raise ImportError(
+                "Portfolio analytics requires optional client dependencies. "
+                "Install the relevant extras before using DataLoader.portfolio_analytics."
+            )
         return self._portfolio_analytics_adapter
 
     @property
@@ -280,7 +297,9 @@ class DataLoader:
                     if candidate is not None:
                         return float(candidate)
             except Exception as exc:
-                logger.warning("  ⚠️  Failed to read fallback indicators file %s: %s", tcmb_file, exc)
+                logger.warning(
+                    "  ⚠️  Failed to read fallback indicators file %s: %s", tcmb_file, exc
+                )
 
         return None
 
@@ -464,16 +483,17 @@ class DataLoader:
         warnings.warn(
             "get_index_components_borsapy() is deprecated, "
             "use borsapy_adapter.get_index_components() directly",
-            DeprecationWarning, stacklevel=2,
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_index_components(index=index)
 
     def get_financials_borsapy(self, symbol: str) -> dict[str, pd.DataFrame]:
         """.. deprecated:: Use ``borsapy_adapter.get_financials()``."""
         warnings.warn(
-            "get_financials_borsapy() is deprecated, "
-            "use borsapy_adapter.get_financials() directly",
-            DeprecationWarning, stacklevel=2,
+            "get_financials_borsapy() is deprecated, use borsapy_adapter.get_financials() directly",
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_financials(symbol=symbol)
 
@@ -482,25 +502,26 @@ class DataLoader:
         warnings.warn(
             "get_financial_ratios_borsapy() is deprecated, "
             "use borsapy_adapter.get_financial_ratios() directly",
-            DeprecationWarning, stacklevel=2,
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_financial_ratios(symbol=symbol)
 
     def get_dividends_borsapy(self, symbol: str) -> pd.DataFrame:
         """.. deprecated:: Use ``borsapy_adapter.get_dividends()``."""
         warnings.warn(
-            "get_dividends_borsapy() is deprecated, "
-            "use borsapy_adapter.get_dividends() directly",
-            DeprecationWarning, stacklevel=2,
+            "get_dividends_borsapy() is deprecated, use borsapy_adapter.get_dividends() directly",
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_dividends(symbol=symbol)
 
     def get_fast_info_borsapy(self, symbol: str) -> dict:
         """.. deprecated:: Use ``borsapy_adapter.get_fast_info()``."""
         warnings.warn(
-            "get_fast_info_borsapy() is deprecated, "
-            "use borsapy_adapter.get_fast_info() directly",
-            DeprecationWarning, stacklevel=2,
+            "get_fast_info_borsapy() is deprecated, use borsapy_adapter.get_fast_info() directly",
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_fast_info(symbol=symbol)
 
@@ -512,9 +533,9 @@ class DataLoader:
     ) -> pd.DataFrame:
         """.. deprecated:: Use ``borsapy_adapter.screen_stocks()``."""
         warnings.warn(
-            "screen_stocks_borsapy() is deprecated, "
-            "use borsapy_adapter.screen_stocks() directly",
-            DeprecationWarning, stacklevel=2,
+            "screen_stocks_borsapy() is deprecated, use borsapy_adapter.screen_stocks() directly",
+            DeprecationWarning,
+            stacklevel=2,
         )
         merged_filters = dict(filters or {})
         merged_filters.update(kwargs)
@@ -553,9 +574,9 @@ class DataLoader:
     ) -> StockData | None:
         """.. deprecated:: Use ``borsapy_adapter.get_stock_data()``."""
         warnings.warn(
-            "get_stock_data_borsapy() is deprecated, "
-            "use borsapy_adapter.get_stock_data() directly",
-            DeprecationWarning, stacklevel=2,
+            "get_stock_data_borsapy() is deprecated, use borsapy_adapter.get_stock_data() directly",
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_stock_data(
             symbol=symbol,
@@ -573,7 +594,8 @@ class DataLoader:
         warnings.warn(
             "get_history_with_indicators_borsapy() is deprecated, "
             "use borsapy_adapter.get_history_with_indicators() directly",
-            DeprecationWarning, stacklevel=2,
+            DeprecationWarning,
+            stacklevel=2,
         )
         return self.borsapy_adapter.get_history_with_indicators(
             symbol=symbol,
@@ -664,7 +686,7 @@ class DataLoader:
     def _load_consolidated_fundamentals(self) -> pd.DataFrame | None:
         """Load consolidated fundamentals directly from borsapy_cache, building on the fly if needed."""
         consolidated_path = self.paths.borsapy_cache_dir / "financials_consolidated.parquet"
-        
+
         # 1. Try to load pre-built consolidated form
         if consolidated_path.exists():
             try:
@@ -674,38 +696,38 @@ class DataLoader:
                     return frame
             except Exception as e:
                 logger.warning(f"  ⚠️  Failed to read {consolidated_path}: {e}")
-        
+
         # 2. Build on the fly from borsapy_cache/financials
         financials_dir = self.paths.borsapy_cache_dir / "financials"
         if not financials_dir.exists():
             return None
-            
+
         logger.info("  🔄 Building consolidated fundamentals from borsapy_cache...")
-        
+
         SHEET_MAP = {
             "balance_sheet": "Bilanço",
             "income_stmt": "Gelir Tablosu (Çeyreklik)",
-            "cash_flow": "Nakit Akış (Çeyreklik)"
+            "cash_flow": "Nakit Akış (Çeyreklik)",
         }
-        
+
         rows = []
         count = 0
         for ticker_dir in financials_dir.iterdir():
             if not ticker_dir.is_dir():
                 continue
             ticker = ticker_dir.name
-            
+
             for path in ticker_dir.glob("*.parquet"):
                 sheet_key = path.stem
                 if sheet_key not in SHEET_MAP:
                     continue
                 sheet_name = SHEET_MAP[sheet_key]
-                
+
                 try:
                     df = pd.read_parquet(path)
                     if df.empty or df.index.name != "Item":
                         continue
-                        
+
                     # Reset index so 'Item' becomes a column
                     df_reset = df.reset_index()
                     for _, row in df_reset.iterrows():
@@ -720,10 +742,10 @@ class DataLoader:
             count += 1
             if count % 100 == 0:
                 logger.info(f"    Indexed {count} tickers...")
-                
+
         if not rows:
             return None
-            
+
         panel = pd.DataFrame(rows)
         panel.index = pd.MultiIndex.from_tuples(
             panel.index.tolist(),
@@ -731,13 +753,13 @@ class DataLoader:
         )
         # Drop fully NaN columns
         panel = panel.dropna(axis=1, how="all")
-        
+
         try:
             panel.to_parquet(consolidated_path)
             logger.info("  💾 Saved new built consolidated fundamentals to borsapy_cache")
         except Exception as e:
             logger.warning(f"  ⚠️  Failed to write {consolidated_path}: {e}")
-            
+
         return panel
 
     def _should_use_borsapy_for(self, category: str = "prices") -> bool:
@@ -762,7 +784,9 @@ class DataLoader:
         """Attempt to load prices through the borsapy adapter + disk cache."""
         try:
             result = self.load_prices_borsapy(
-                symbols=symbols, period=period, index=index,
+                symbols=symbols,
+                period=period,
+                index=index,
             )
             if not result.empty:
                 return result
@@ -793,7 +817,8 @@ class DataLoader:
             # --- Borsapy / cache path (auto or borsapy mode) ---------------
             if prices_file is None and self._should_use_borsapy_for("prices"):
                 borsapy_prices = self._load_prices_via_borsapy(
-                    symbols=symbols, index="XUTUM",
+                    symbols=symbols,
+                    index="XUTUM",
                 )
                 if not borsapy_prices.empty:
                     self._prices = borsapy_prices
@@ -975,15 +1000,13 @@ class DataLoader:
         if self._fundamentals is None:
             logger.info("\n📈 Loading fundamental data...")
             fundamentals = {}
-            
+
             # 1. Try to load the consolidated panel from the new cache logic
             self._fundamentals_parquet = self._load_consolidated_fundamentals()
             if self._fundamentals_parquet is not None:
                 self._enforce_fundamentals_freshness_gate(self._fundamentals_parquet)
                 tickers = (
-                    self._fundamentals_parquet.index.get_level_values("ticker")
-                    .unique()
-                    .tolist()
+                    self._fundamentals_parquet.index.get_level_values("ticker").unique().tolist()
                 )
                 for ticker in tickers:
                     fundamentals[ticker] = {"path": None, "borsapy": True}
@@ -1014,7 +1037,8 @@ class DataLoader:
         return self._fundamentals
 
     def _borsapy_fundamentals_fill(
-        self, fundamentals: Dict,
+        self,
+        fundamentals: Dict,
     ) -> None:
         """Try to populate fundamental dict from borsapy financial statements."""
         try:
@@ -1032,8 +1056,7 @@ class DataLoader:
                 try:
                     stmts = self.borsapy_adapter.get_financials(symbol=sym)
                     if stmts and any(
-                        isinstance(v, pd.DataFrame) and not v.empty
-                        for v in stmts.values()
+                        isinstance(v, pd.DataFrame) and not v.empty for v in stmts.values()
                     ):
                         fundamentals[sym] = {"path": None, "borsapy": True}
                         filled += 1
@@ -1056,7 +1079,9 @@ class DataLoader:
         return self._fundamentals_parquet
 
     @staticmethod
-    def _turkish_expected_publication_date(reference_date: pd.Timestamp | None = None) -> tuple[str, pd.Timestamp]:
+    def _turkish_expected_publication_date(
+        reference_date: pd.Timestamp | None = None,
+    ) -> tuple[str, pd.Timestamp]:
         """Return the latest quarter whose deadline has passed.
 
         Turkish reporting deadlines:
@@ -1071,10 +1096,10 @@ class DataLoader:
         year = reference_date.year
         # (quarter_end_month, quarter_label, deadline_days)
         deadlines = [
-            (3, f"{year}/3",   45),   # Q1
-            (6, f"{year}/6",   45),   # Q2
-            (9, f"{year}/9",   45),   # Q3
-            (12, f"{year}/12", 75),   # Q4
+            (3, f"{year}/3", 45),  # Q1
+            (6, f"{year}/6", 45),  # Q2
+            (9, f"{year}/9", 45),  # Q3
+            (12, f"{year}/12", 75),  # Q4
         ]
         # Also check prior year Q4 — it may be the latest publishable one
         deadlines.insert(0, (12, f"{year - 1}/12", 75))
@@ -1106,7 +1131,9 @@ class DataLoader:
             return
 
         expected_q, deadline = self._turkish_expected_publication_date()
-        logger.info(f"  📅 Turkish calendar: expecting at least {expected_q} (deadline was {deadline:%Y-%m-%d})")
+        logger.info(
+            f"  📅 Turkish calendar: expecting at least {expected_q} (deadline was {deadline:%Y-%m-%d})"
+        )
 
         # Check if the expected quarter column exists in the panel
         if isinstance(panel.columns, pd.Index):
@@ -1115,7 +1142,9 @@ class DataLoader:
                 # Count how many tickers have data for this quarter
                 if isinstance(panel.index, pd.MultiIndex) and "ticker" in panel.index.names:
                     ticker_level = panel.index.get_level_values("ticker")
-                    coverage = panel[expected_q].groupby(ticker_level).apply(lambda s: s.notna().any())
+                    coverage = (
+                        panel[expected_q].groupby(ticker_level).apply(lambda s: s.notna().any())
+                    )
                     pct = coverage.mean()
                 else:
                     pct = panel[expected_q].notna().mean()
@@ -1210,7 +1239,12 @@ class DataLoader:
 
         # Extract from fundamentals parquet (Ödenmiş Sermaye)
         try:
-            from bist_quant.common.utils import get_consolidated_sheet, pick_row_from_sheet, coerce_quarter_cols
+            from bist_quant.common.utils import (
+                get_consolidated_sheet,
+                pick_row_from_sheet,
+                coerce_quarter_cols,
+            )
+
             fund_parquet = self.load_fundamentals_parquet()
             if fund_parquet is not None:
                 bs = get_consolidated_sheet(fund_parquet, ticker, "Bilanço")
@@ -1295,9 +1329,7 @@ class DataLoader:
                 candidate_files.append(
                     self.regime_model_dir.parent / "outputs" / "regime_features.csv"
                 )
-            candidate_files.extend(
-                [p / "regime_features.csv" for p in REGIME_DIR_CANDIDATES]
-            )
+            candidate_files.extend([p / "regime_features.csv" for p in REGIME_DIR_CANDIDATES])
             candidate_files.extend(
                 [p / "outputs" / "regime_features.csv" for p in REGIME_DIR_CANDIDATES]
             )
@@ -1413,7 +1445,9 @@ class DataLoader:
                         df = df.rename(columns={col: "XAU_TRY"})
                         break
             if "XAU_TRY" not in df.columns:
-                raise ValueError(f"XAU_TRY column not found in {target_path.name}. Columns: {list(df.columns)}")
+                raise ValueError(
+                    f"XAU_TRY column not found in {target_path.name}. Columns: {list(df.columns)}"
+                )
             # Normalize dates to naive dates (midnight) to prevent overlap issues
             if "Date" in df.columns:
                 df["Date"] = _normalize_dt_series(pd.to_datetime(df["Date"], errors="coerce"))
@@ -1447,7 +1481,9 @@ class DataLoader:
                         xu100_df = hist.get_history("XU100", period="5y", interval="1d")
                         if xu100_df is not None and not xu100_df.empty:
                             if "Close" in xu100_df.columns:
-                                xu100_df.index = _normalize_dt_index(pd.to_datetime(xu100_df.index, errors="coerce"))
+                                xu100_df.index = _normalize_dt_index(
+                                    pd.to_datetime(xu100_df.index, errors="coerce")
+                                )
                                 self._xu100_prices = xu100_df["Close"].sort_index()
                                 logger.info(
                                     "  ✅ Loaded %d XU100 observations via borsapy",

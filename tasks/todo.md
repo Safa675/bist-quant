@@ -458,3 +458,218 @@ Verification log:
   - `docs/plans/artifacts/2026-03-05-phase5-verification-evidence.md`
   - `docs/plans/artifacts/phase5-verification-20260305/`
   - `docs/plans/artifacts/phase5-smoke-20260305T071319Z/`
+
+## Library Publish Readiness — Task 1 (Package Boundary)
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Add a failing package-boundary test that inspects the built wheel.
+- [x] Exclude app-facing Python packages from the published distribution.
+- [x] Remove app-facing exports from the top-level `bist_quant` public API.
+- [x] Run targeted package-boundary tests and package build verification.
+
+Definition of done:
+- Built wheel does not include app-facing packages such as `bist_quant.api` and `bist_quant.services`.
+- `import bist_quant` still works from the source tree and from the built wheel.
+- Top-level package surface no longer advertises app-only helpers.
+
+Review:
+- Added `tests/test_package_boundary.py` to build the wheel, inspect wheel contents, and smoke-install it into a clean virtualenv.
+- Updated `pyproject.toml` to exclude app-facing packages from the published artifact:
+  - `src/bist_quant/api`
+  - `src/bist_quant/engines`
+  - `src/bist_quant/jobs`
+  - `src/bist_quant/observability`
+  - `src/bist_quant/persistence`
+  - `src/bist_quant/security`
+  - `src/bist_quant/services`
+- Pruned app-facing exports from `src/bist_quant/__init__.py` so the top-level library surface no longer advertises API/router helpers or engine compatibility exports.
+- Hardened `src/bist_quant/common/__init__.py` and `src/bist_quant/common/data_loader.py` so `import bist_quant` succeeds from a clean wheel install with only core dependencies installed.
+
+Verification:
+- `pytest tests/test_package_boundary.py -v` -> PASS (`2 passed`)
+- `python -c "import bist_quant; print(bist_quant.__version__)"` -> PASS (`0.3.0`)
+
+## Library Publish Readiness — Task 2 (Version Coherence)
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Add a failing regression test for version coherence.
+- [x] Align package metadata version with the library version.
+- [x] Remove hardcoded CLI/API version drift.
+- [x] Re-run version and package-boundary verification.
+
+Definition of done:
+- `pyproject.toml`, `bist_quant.__version__`, docs version text, and remaining API metadata agree.
+- CLI and API version surfaces derive from the package version instead of separate hardcoded literals.
+
+Review:
+- Added `tests/test_version_coherence.py` to pin version agreement across package metadata, docs, CLI source, and API source.
+- Updated `pyproject.toml` package version from `2.0.0` to `0.3.0` to match the library’s canonical version.
+- Updated `src/bist_quant/cli.py` to derive `--version` output from `bist_quant.__version__`.
+- Updated `src/bist_quant/api/main.py` to derive FastAPI metadata version from the package version.
+
+Verification:
+- `pytest tests/test_package_boundary.py tests/test_version_coherence.py -v` -> PASS (`5 passed`)
+- `python -c "import bist_quant; print(bist_quant.__version__)"` -> PASS (`0.3.0`)
+
+## Library Publish Readiness — Task 3 (CLI and Public Export Integrity)
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Add failing regressions for the console script and top-level exports.
+- [x] Fix the CLI entry point so the installed `bist-quant` script resolves a real `main()`.
+- [x] Fix top-level optional client exports to import from `bist_quant.clients.*`.
+- [x] Re-run publish-readiness regression verification.
+
+Definition of done:
+- Installed wheel exposes a working `bist-quant --version` command.
+- `bist_quant.BorsapyAdapter` resolves from the `clients` package instead of silently becoming `None` due to stale import paths.
+
+Review:
+- Added `tests/test_public_api_surface.py` to verify:
+  - `bist_quant.BorsapyAdapter` is a real export from `bist_quant.clients.borsapy_adapter`
+  - a clean wheel install provides a working `bist-quant --version` console script
+- Added canonical CLI implementation module `src/bist_quant/_cli.py`.
+- Updated `src/bist_quant/cli/__init__.py` to export `main` from the canonical CLI implementation, making the existing `bist_quant.cli:main` console-script target valid.
+- Removed the dead conflicting file `src/bist_quant/cli.py`.
+- Fixed stale top-level optional client imports in `src/bist_quant/__init__.py` to import from `src/bist_quant/clients/`.
+- Updated `tests/test_version_coherence.py` to track the canonical CLI implementation file.
+
+Verification:
+- `pytest tests/test_package_boundary.py tests/test_version_coherence.py tests/test_public_api_surface.py -v` -> PASS (`7 passed`)
+- `python -c "import bist_quant, bist_quant.cli; print(bist_quant.__version__); print(hasattr(bist_quant.cli, 'main')); print(bist_quant.BorsapyAdapter.__module__)"` -> PASS (`0.3.0`, `True`, `bist_quant.clients.borsapy_adapter`)
+
+## Library Publish Readiness — Task 4 (Runtime Path Decoupling)
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Add failing regressions for user-scoped runtime defaults.
+- [x] Remove repo-root auto-detection from default `DataPaths` and runtime resolution.
+- [x] Keep explicit env/argument overrides working while defaulting installed-library usage to XDG/home directories.
+- [x] Re-run publish-readiness regression verification.
+
+Definition of done:
+- Default `DataPaths()` no longer points at the checked-out repo.
+- Default `resolve_runtime_paths()` no longer depends on current working directory or source-tree layout.
+- Clean wheel installs default to user-scoped directories.
+
+Review:
+- Added `tests/test_runtime_defaults.py` to verify source-tree and installed-wheel defaults for `DataPaths` and `resolve_runtime_paths()`.
+- Updated `src/bist_quant/runtime.py` with user-scoped default directory helpers based on XDG/home conventions:
+  - project root: `~/.local/share/bist-quant`
+  - data dir: `~/.local/share/bist-quant/data`
+  - regime dir: `~/.local/share/bist-quant/regime/simple_regime`
+  - cache dir: `~/.cache/bist-quant`
+- Removed parent-folder repository discovery from `src/bist_quant/common/data_paths.py` and switched its fallback behavior to the user-scoped defaults.
+- Preserved explicit override behavior via `BIST_PROJECT_ROOT`, `BIST_DATA_DIR`, `BIST_REGIME_DIR`, `BIST_CACHE_DIR`, and direct function/class arguments.
+
+Verification:
+- `pytest tests/test_package_boundary.py tests/test_version_coherence.py tests/test_public_api_surface.py tests/test_runtime_defaults.py -v` -> PASS (`10 passed`)
+- `python -c "from bist_quant.common.data_paths import DataPaths; from bist_quant.runtime import resolve_runtime_paths; p=DataPaths(); r=resolve_runtime_paths(); print(p.data_dir); print(p.cache_dir); print(r.project_root)"` -> PASS (`/home/safa/.local/share/bist-quant/data`, `/home/safa/.cache/bist-quant`, `/home/safa/.local/share/bist-quant`)
+
+## Library Publish Readiness — Task 5 (Docs Coherence)
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Add failing regressions for public docs coherence.
+- [x] Rewrite top-level docs for `pip install` and library-first usage.
+- [x] Update install and quickstart docs for user-scoped runtime defaults.
+- [x] Remove broken MkDocs nav entries that referenced missing API-reference pages.
+- [x] Re-run publish-readiness regression verification.
+
+Definition of done:
+- README and docs home present `bist_quant` as a standalone Python library.
+- Public installation docs lead with `pip install bist-quant`.
+- Runtime defaults described in docs match the implemented XDG/home-scoped behavior.
+- MkDocs nav no longer contains dead API-reference links.
+
+Review:
+- Added `tests/test_docs_public_story.py` to pin the public docs contract.
+- Rewrote `README.md` for a library-first story:
+  - `pip install bist-quant` is now the primary install path
+  - app-stack material is removed from the top-level package README
+  - default library directories now match runtime behavior
+  - architecture/examples focus on the publishable library surface
+- Updated `docs/getting-started/installation.md` to:
+  - lead with PyPI install
+  - move editable install to contributor context
+  - document default user-scoped data/regime/cache directories
+  - remove the old repo auto-detection description
+- Updated `docs/getting-started/quickstart.md` and `docs/index.md` to reflect the new runtime defaults and library-first positioning.
+- Removed broken API Reference nav entries from `mkdocs.yml` so docs navigation no longer points at missing files.
+
+Verification:
+- `pytest tests/test_package_boundary.py tests/test_version_coherence.py tests/test_public_api_surface.py tests/test_runtime_defaults.py tests/test_docs_public_story.py -v` -> PASS (`14 passed`)
+- `python -c "from pathlib import Path; print('pip install bist-quant' in Path('README.md').read_text()); print('pip install bist-quant' in Path('docs/getting-started/installation.md').read_text())"` -> PASS (`True`, `True`)
+
+## Library Publish Readiness — Task 6 (Dependency and Extras Strategy)
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Add failing regressions for the published extras contract.
+- [x] Remove app-only extras from the published library package.
+- [x] Add a library-facing provider extra that covers shipped optional client dependencies.
+- [x] Narrow the `full` extra to library-relevant extras only.
+- [x] Re-run publish-readiness regression verification.
+
+Definition of done:
+- The published package no longer advertises extras for excluded app modules.
+- Optional shipped provider clients are represented by library-facing extras.
+- `full` expands to research-library extras only.
+
+Review:
+- Added `tests/test_dependency_strategy.py` to pin the extras/dependency contract.
+- Updated `pyproject.toml` optional dependencies:
+  - removed app-only extras: `api`, `security`, `observability`, `services`, `app`
+  - added `providers` extra for shipped optional client integrations (`httpx`, `yfinance`, `borsapy`)
+  - kept library-facing extras: `borsapy`, `multi-asset`, `ml`, `dev`
+  - narrowed `full` to `bist-quant[providers,multi-asset,borsapy,ml]`
+- Updated `README.md` and `docs/getting-started/installation.md` to mention the new `providers` extra.
+
+Verification:
+- `pytest tests/test_package_boundary.py tests/test_version_coherence.py tests/test_public_api_surface.py tests/test_runtime_defaults.py tests/test_docs_public_story.py tests/test_dependency_strategy.py -v` -> PASS (`17 passed`)
+- `python -c "import tomllib, pathlib; data=tomllib.loads(pathlib.Path('pyproject.toml').read_text()); extras=data['project']['optional-dependencies']; print(sorted(extras)); print(extras['full'][0])"` -> PASS (`['borsapy', 'dev', 'full', 'ml', 'multi-asset', 'providers']`, `bist-quant[providers,multi-asset,borsapy,ml]`)
+
+## Library Publish Readiness — Final Release Validation
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Build wheel and sdist from the current tree.
+- [x] Run `twine check` on built artifacts.
+- [x] Install the wheel into a fresh virtualenv.
+- [x] Verify import surface, CLI, and user-scoped defaults from the installed wheel.
+- [x] Verify a corrected quickstart-style run from the installed wheel.
+- [x] Capture any remaining non-blocking cleanup.
+
+Definition of done:
+- Artifacts build cleanly.
+- Metadata passes `twine check`.
+- Fresh-wheel install works.
+- Installed wheel exposes working import/CLI behavior.
+- A library-first example runs successfully from the installed artifact with explicit external data configuration.
+
+Review:
+- Installed `build` and `twine` in the local environment to perform artifact validation.
+- Built clean release artifacts: `dist/bist_quant-0.3.0.tar.gz` and `dist/bist_quant-0.3.0-py3-none-any.whl`.
+- Validated fresh-wheel install and CLI in isolated virtualenvs.
+- Found and fixed one runtime blocker during validation: `DataManager.load_all()` always required regime outputs even when `use_regime_filter=False`.
+- Updated `src/bist_quant/common/data_manager.py` and `src/bist_quant/portfolio.py` so minimal backtests can skip regime files when regime filtering is disabled.
+- Updated surfaced quickstart snippets in `README.md`, `docs/index.md`, and `docs/getting-started/quickstart.md` to match the real API:
+  - `PortfolioEngine(data_loader=loader, ...)`
+  - `result['sharpe']` / `result['cagr']` instead of `result.metrics[...]`
+
+Verification:
+- `pytest tests/test_quickstart_runtime.py tests/test_docs_public_story.py tests/test_dependency_strategy.py tests/test_package_boundary.py tests/test_version_coherence.py tests/test_public_api_surface.py tests/test_runtime_defaults.py -v` -> PASS (`18 passed`)
+- `python -m build && python -m twine check dist/*` -> PASS
+- Fresh installed wheel checks:
+  - `bist-quant --version` -> PASS (`bist-quant 0.3.0`)
+  - installed import defaults -> PASS (user-scoped data/cache/project-root paths)
+  - corrected quickstart-style example -> PASS (`prices_shape=(1360918, 7)`, `sharpe=1.7774`, `cagr=0.3294`)

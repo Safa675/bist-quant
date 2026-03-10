@@ -18,10 +18,10 @@ The backtester runs an **event-loop simulation** day-by-day, rebalancing at `mon
 from bist_quant import PortfolioEngine, DataLoader, DataPaths
 
 loader = DataLoader(data_paths=DataPaths())
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(data_loader=loader, options={"use_regime_filter": False})
 
 result = engine.run_factor("momentum")
-print(result.metrics)
+print({k: result[k] for k in ("cagr", "sharpe", "max_drawdown")})
 ```
 
 ## What the Event Loop Does
@@ -36,14 +36,14 @@ On each rebalance day:
 7. **Apply stop-loss** — per-position drawdown check if enabled
 8. **Record** returns, holdings, turnover, regime
 
-## Result Object
+## Result Payload
 
 ```python
-result.metrics          # dict: cagr, sharpe, sortino, max_drawdown, calmar, ...
-result.returns          # pd.Series: daily portfolio returns
-result.positions        # pd.DataFrame: (date, ticker, weight) holdings
-result.regime_history   # pd.Series: daily regime labels
-result.equity_curve     # pd.Series: cumulative NAV from 1.0
+result["cagr"]               # float
+result["sharpe"]             # float
+result["returns"]            # pd.Series: daily portfolio returns
+result["holdings_history"]   # pd.DataFrame: holdings history
+result["equity"]             # pd.Series: cumulative NAV from 1.0
 ```
 
 ## Regime Filter

@@ -7,8 +7,11 @@ This guide walks through the core backtest flow from data loading to results.
 ```python
 from bist_quant import DataLoader, DataPaths
 
-# DataPaths auto-detects the data/ directory from the project root
-# Override with BIST_DATA_DIR env var if needed
+# Defaults:
+#   ~/.local/share/bist-quant/data
+#   ~/.local/share/bist-quant/regime/simple_regime
+#   ~/.cache/bist-quant
+# Override with BIST_DATA_DIR / BIST_REGIME_DIR / BIST_CACHE_DIR if needed.
 paths = DataPaths()
 loader = DataLoader(data_paths=paths)
 
@@ -18,19 +21,28 @@ close = loader.build_close_panel()      # (dates × tickers) close prices
 fundamentals = loader.load_fundamentals()  # consolidated financial statements
 ```
 
+If you are loading from existing local parquet/CSV files instead of provider integrations, set:
+
+```bash
+export BIST_DATA_SOURCE=local
+```
+
 ## 2. Run a Factor Backtest
 
 ```python
 from bist_quant import PortfolioEngine
 
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(
+    data_loader=loader,
+    options={"use_regime_filter": False},
+)
 
 # Run any registered strategy by name
 result = engine.run_factor("momentum")
 
-print(f"CAGR:         {result.metrics['cagr']:.1%}")
-print(f"Sharpe:       {result.metrics['sharpe']:.2f}")
-print(f"Max Drawdown: {result.metrics['max_drawdown']:.1%}")
+print(f"CAGR:         {result['cagr']:.1%}")
+print(f"Sharpe:       {result['sharpe']:.2f}")
+print(f"Max Drawdown: {result['max_drawdown']:.1%}")
 print(f"Trades:       {len(result.positions)}")
 ```
 

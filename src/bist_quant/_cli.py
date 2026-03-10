@@ -15,10 +15,11 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import __version__
+
 
 def cmd_info(args) -> None:
     """Show package information."""
-    from . import __version__
     from .common.data_paths import get_data_paths
     from .configs import list_strategies
     from .signals import list_available_signals
@@ -122,7 +123,7 @@ def main() -> None:
         prog="bist-quant",
         description="BIST Quant - Quantitative Research Library",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.3.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
@@ -165,6 +166,9 @@ def main() -> None:
         args.func(args)
     else:
         parser.print_help()
+
+
+__all__ = ["main"]
 
 
 if __name__ == "__main__":

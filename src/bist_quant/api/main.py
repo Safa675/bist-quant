@@ -9,6 +9,8 @@ from typing import Any, Callable, cast
 
 import pandas as pd
 
+from bist_quant import __version__ as PACKAGE_VERSION
+
 try:
     from fastapi import APIRouter, FastAPI, Query
     from fastapi.exceptions import RequestValidationError
@@ -80,7 +82,9 @@ class JobCreateRequest(BaseModel):
     request: dict[str, Any]
 
 
-def _validate_job_request_model(model: type[BaseModel], raw: dict[str, Any], *, kind: str) -> BaseModel:
+def _validate_job_request_model(
+    model: type[BaseModel], raw: dict[str, Any], *, kind: str
+) -> BaseModel:
     try:
         return model.model_validate(raw)
     except ValidationError as exc:
@@ -492,7 +496,10 @@ JOB_KIND_VALIDATORS: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
 
 JOBS_CREATE_RESPONSES = {
     400: {"model": ApiErrorEnvelope, "description": "Unsupported job kind."},
-    422: {"model": ApiErrorEnvelope, "description": "Request validation or payload validation error."},
+    422: {
+        "model": ApiErrorEnvelope,
+        "description": "Request validation or payload validation error.",
+    },
 }
 JOBS_LIST_RESPONSES = {
     422: {"model": ApiErrorEnvelope, "description": "Request validation error."},
@@ -504,7 +511,10 @@ JOBS_ITEM_RESPONSES = {
 JOBS_RETRY_RESPONSES = {
     400: {"model": ApiErrorEnvelope, "description": "Retry request is invalid for this job."},
     404: {"model": ApiErrorEnvelope, "description": "Job not found."},
-    422: {"model": ApiErrorEnvelope, "description": "Request validation or payload validation error."},
+    422: {
+        "model": ApiErrorEnvelope,
+        "description": "Request validation or payload validation error.",
+    },
 }
 
 
@@ -533,7 +543,10 @@ def create_job(payload: JobCreateRequest) -> dict[str, Any]:
             core = CoreBackendService(strict_paths=False)
             factors = []
             for sig in combine_req.signals:
-                spec: dict[str, Any] = {"name": sig.get("name", ""), "weight": sig.get("weight", 1.0)}
+                spec: dict[str, Any] = {
+                    "name": sig.get("name", ""),
+                    "weight": sig.get("weight", 1.0),
+                }
                 for k, v in sig.items():
                     if k not in ("name", "weight"):
                         spec[k] = v
@@ -563,6 +576,7 @@ def create_job(payload: JobCreateRequest) -> dict[str, Any]:
 
         def _run_screener() -> dict[str, Any]:
             from bist_quant.engines.stock_filter import run_stock_filter
+
             return run_stock_filter(scr_req.model_dump())
 
         record = job_manager.create(
@@ -651,7 +665,7 @@ def retry_job(job_id: str) -> dict[str, Any]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="BIST Quant API", version="0.1.0")
+    app = FastAPI(title="BIST Quant API", version=PACKAGE_VERSION)
     app.add_exception_handler(RequestValidationError, jobs_request_validation_exception_handler)
     app.add_middleware(
         CORSMiddleware,

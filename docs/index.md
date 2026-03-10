@@ -2,7 +2,7 @@
 
 **Quantitative research and backtesting library for Borsa Istanbul (BIST).** Version 0.3.0.
 
-Covers the full stack from raw data ingestion through signal construction, event-loop backtesting, professional analytics, realtime quotes, and API-ready services.
+`bist_quant` is a library-first toolkit for BIST research workflows: factor construction, event-loop backtesting, portfolio analytics, and provider integrations that can be used from notebooks, scripts, dashboards, or external applications.
 
 ## What's Inside
 
@@ -13,14 +13,11 @@ Covers the full stack from raw data ingestion through signal construction, event
 - **Professional analytics** — GARCH volatility, walk-forward analysis, Monte Carlo, Kelly sizing, factor exposure, compliance checks
 - **Realtime quotes** — TradingView streaming overlay with borsapy polling fallback
 - **Multi-asset data** — borsapy (BIST), Borsa MCP (crypto, US stocks, TEFAS funds), FX, gold, derivatives, fixed income
-- **Job system** — async job queue with progress pub/sub for long-running tasks
 
 ## Installation
 
 ```bash
-git clone https://github.com/Safa675/bist-quant.git
-cd BIST
-pip install -e ".[dev]"
+pip install bist-quant
 ```
 
 ## Quick Example
@@ -28,14 +25,23 @@ pip install -e ".[dev]"
 ```python
 from bist_quant import PortfolioEngine, DataLoader, DataPaths
 
-paths = DataPaths()                    # auto-detects data/ from project root
+paths = DataPaths()
 loader = DataLoader(data_paths=paths)
-engine = PortfolioEngine(loader=loader)
+engine = PortfolioEngine(
+    data_loader=loader,
+    options={"use_regime_filter": False},
+)
 
 result = engine.run_factor("momentum")  # runs full backtest
-print(f"Sharpe: {result.metrics['sharpe']:.2f}")
-print(f"CAGR:   {result.metrics['cagr']:.1%}")
+print(f"Sharpe: {result['sharpe']:.2f}")
+print(f"CAGR:   {result['cagr']:.1%}")
 ```
+
+Default library directories:
+
+- data: `~/.local/share/bist-quant/data`
+- regime outputs: `~/.local/share/bist-quant/regime/simple_regime`
+- cache: `~/.cache/bist-quant`
 
 ## Documentation
 

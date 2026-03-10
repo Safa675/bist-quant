@@ -2,7 +2,8 @@
 Data Path Resolution - BIST Quant
 
 Provides consistent data path resolution across all modules.
-Supports environment variable configuration for flexible deployment.
+Defaults to user-scoped XDG/home directories so installed-library usage does not
+depend on a checked-out repository layout.
 
 Environment Variables:
     BIST_DATA_DIR: Path to canonical market data directory
@@ -24,24 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-
-def _find_bist_root() -> Path:
-    """Find BIST repository root directory."""
-    current = Path(__file__).resolve()
-
-    for parent in [current] + list(current.parents):
-        # The true project root has a data directory and optionally a pyproject.toml
-        if (parent / "data").is_dir() and (parent / "pyproject.toml").is_file():
-            return parent
-        if (parent / "data").is_dir() and (parent / "src" / "bist_quant").is_dir():
-            return parent
-            
-    # Fallback to finding just the data dir
-    for parent in [current] + list(current.parents):
-        if (parent / "data").is_dir():
-            return parent
-
-    return Path(__file__).parent.parent.parent.parent
+from bist_quant.runtime import default_cache_dir, default_data_dir, default_regime_dir
 
 
 def _resolve_path(value: Optional[Path | str]) -> Optional[Path]:
@@ -68,7 +52,7 @@ class DataPaths:
     Resolves paths based on:
     1. Environment variables (highest priority)
     2. Explicit constructor arguments
-    3. Auto-detected BIST repository paths (fallback)
+    3. User-scoped library directories (fallback)
 
     Attributes:
         data_dir: Root directory for market data
@@ -82,26 +66,18 @@ class DataPaths:
 
     def __post_init__(self) -> None:
         """Initialize paths from environment or defaults."""
-        bist_root = _find_bist_root()
-
         explicit_data = _resolve_path(self.data_dir)
         explicit_regime = _resolve_path(self.regime_dir)
         explicit_cache = _resolve_path(self.cache_dir)
 
         self.data_dir = (
-            _get_env_path("BIST_DATA_DIR")
-            or explicit_data
-            or (bist_root / "data")
+            _get_env_path("BIST_DATA_DIR") or explicit_data or default_data_dir(create=True)
         )
         self.regime_dir = (
-            _get_env_path("BIST_REGIME_DIR")
-            or explicit_regime
-            or (bist_root / "outputs" / "regime" / "simple_regime")
+            _get_env_path("BIST_REGIME_DIR") or explicit_regime or default_regime_dir(create=True)
         )
         self.cache_dir = (
-            _get_env_path("BIST_CACHE_DIR")
-            or explicit_cache
-            or (bist_root / ".cache")
+            _get_env_path("BIST_CACHE_DIR") or explicit_cache or default_cache_dir(create=True)
         )
 
     # -------------------------------------------------------------------------
@@ -141,7 +117,7 @@ class DataPaths:
         cache_csv = self.borsapy_cache_dir / "index_components" / "XU100.csv"
         if cache_csv.exists():
             return cache_csv
-        
+
         parquet = self.data_dir / "xu100_prices.parquet"
         if parquet.exists():
             return parquet

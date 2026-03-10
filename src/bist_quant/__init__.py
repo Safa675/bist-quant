@@ -50,32 +50,32 @@ from .common.report_generator import ReportGenerator
 # =============================================================================
 
 try:
-    from .common.crypto_client import CryptoClient
+    from .clients.crypto_client import CryptoClient
 except Exception:
     CryptoClient = None
 
 try:
-    from .common.us_stock_client import USStockClient
+    from .clients.us_stock_client import USStockClient
 except Exception:
     USStockClient = None
 
 try:
-    from .common.fx_commodities_client import FXCommoditiesClient
+    from .clients.fx_commodities_client import FXCommoditiesClient
 except Exception:
     FXCommoditiesClient = None
 
 try:
-    from .common.fx_enhanced_provider import FXEnhancedProvider
+    from .clients.fx_enhanced_provider import FXEnhancedProvider
 except Exception:
     FXEnhancedProvider = None
 
 try:
-    from .common.fund_analyzer import FundAnalyzer
+    from .clients.fund_analyzer import FundAnalyzer
 except Exception:
     FundAnalyzer = None
 
 try:
-    from .common.borsapy_adapter import BorsapyAdapter
+    from .clients.borsapy_adapter import BorsapyAdapter
 except Exception:
     BorsapyAdapter = None
 
@@ -91,25 +91,6 @@ except Exception:
     HAS_REGIME_FILTER = False
 
 # =============================================================================
-# API (OPTIONAL IMPORT)
-# =============================================================================
-
-
-def get_api_app():
-    """Get FastAPI application instance."""
-    from .api.main import app
-
-    return app
-
-
-def get_quant_router():
-    """Get quant router for mounting in external apps."""
-    from .api.main import quant_router
-
-    return quant_router
-
-
-# =============================================================================
 # LEGACY-COMPAT EXPORTS
 # =============================================================================
 
@@ -118,23 +99,6 @@ _DEPRECATED_IMPORT_MAP = {
     "RuntimePaths": "bist_quant.runtime",
     "RuntimePathError": "bist_quant.runtime",
     "resolve_runtime_paths": "bist_quant.runtime",
-    "BacktestCancelledError": "bist_quant.jobs",
-    "DEFAULT_INDICATORS": "bist_quant.engines",
-    "FILTER_FIELD_DEFS": "bist_quant.engines",
-    "INDEX_OPTIONS": "bist_quant.engines",
-    "PARAM_SCHEMAS": "bist_quant.engines",
-    "RECOMMENDATION_OPTIONS": "bist_quant.engines",
-    "QuantEngineDataError": "bist_quant.engines",
-    "QuantEngineError": "bist_quant.engines",
-    "QuantEngineExecutionError": "bist_quant.engines",
-    "QuantEngineValidationError": "bist_quant.engines",
-    "build_factor_catalog": "bist_quant.engines",
-    "get_signal_metadata": "bist_quant.engines",
-    "get_stock_filter_metadata": "bist_quant.engines",
-    "run_factor_lab": "bist_quant.engines",
-    "run_signal_backtest": "bist_quant.engines",
-    "run_signal_snapshot": "bist_quant.engines",
-    "run_stock_filter": "bist_quant.engines",
 }
 _DEPRECATED_NAMES = set(_DEPRECATED_IMPORT_MAP)
 
@@ -193,21 +157,6 @@ __all__ = [
     # Regime
     "RegimeClassifier",
     "HAS_REGIME_FILTER",
-    # API
-    "get_api_app",
-    "get_quant_router",
-    # Legacy compatibility
-    "build_factor_catalog",
-    "get_signal_metadata",
-    "get_stock_filter_metadata",
-    "run_factor_lab",
-    "run_signal_backtest",
-    "run_signal_snapshot",
-    "run_stock_filter",
-    "QuantEngineError",
-    "QuantEngineValidationError",
-    "QuantEngineExecutionError",
-    "QuantEngineDataError",
     "BackendPaths",
     "RuntimePaths",
     "RuntimePathError",

@@ -49,16 +49,55 @@ from .panel_cache import PanelCache
 from .staleness import staleness_summary as check_data_staleness
 
 # Multi-asset clients
-from bist_quant.clients.crypto_client import CryptoClient
-from bist_quant.clients.us_stock_client import USStockClient
-from bist_quant.clients.fx_commodities_client import FXCommoditiesClient
-from bist_quant.clients.fund_analyzer import FundAnalyzer
-from bist_quant.clients.borsapy_adapter import BorsapyAdapter
-from bist_quant.clients.macro_adapter import MacroAdapter
-from bist_quant.clients.fixed_income_provider import FixedIncomeProvider
-from bist_quant.clients.derivatives_provider import DerivativesProvider
-from bist_quant.clients.economic_calendar_provider import EconomicCalendarProvider
-from bist_quant.clients.fx_enhanced_provider import FXEnhancedProvider
+try:
+    from bist_quant.clients.crypto_client import CryptoClient
+except Exception:
+    CryptoClient = None
+
+try:
+    from bist_quant.clients.us_stock_client import USStockClient
+except Exception:
+    USStockClient = None
+
+try:
+    from bist_quant.clients.fx_commodities_client import FXCommoditiesClient
+except Exception:
+    FXCommoditiesClient = None
+
+try:
+    from bist_quant.clients.fund_analyzer import FundAnalyzer
+except Exception:
+    FundAnalyzer = None
+
+try:
+    from bist_quant.clients.borsapy_adapter import BorsapyAdapter
+except Exception:
+    BorsapyAdapter = None
+
+try:
+    from bist_quant.clients.macro_adapter import MacroAdapter
+except Exception:
+    MacroAdapter = None
+
+try:
+    from bist_quant.clients.fixed_income_provider import FixedIncomeProvider
+except Exception:
+    FixedIncomeProvider = None
+
+try:
+    from bist_quant.clients.derivatives_provider import DerivativesProvider
+except Exception:
+    DerivativesProvider = None
+
+try:
+    from bist_quant.clients.economic_calendar_provider import EconomicCalendarProvider
+except Exception:
+    EconomicCalendarProvider = None
+
+try:
+    from bist_quant.clients.fx_enhanced_provider import FXEnhancedProvider
+except Exception:
+    FXEnhancedProvider = None
 
 # Utilities
 from .utils import *
@@ -66,10 +105,26 @@ from .enums import *
 from .market_cap_utils import *
 
 # Benchmarking
-from .benchmarking import BenchmarkConfig, run_backtester_benchmark, run_benchmark_suite, run_pipeline_benchmark
+try:
+    from .benchmarking import (
+        BenchmarkConfig,
+        run_backtester_benchmark,
+        run_benchmark_suite,
+        run_pipeline_benchmark,
+    )
+except Exception:
+    BenchmarkConfig = None
+    run_backtester_benchmark = None
+    run_benchmark_suite = None
+    run_pipeline_benchmark = None
 
 # Portfolio analytics
-from .portfolio_analytics import *
+try:
+    from .portfolio_analytics import PortfolioAnalytics, PortfolioAnalyticsAdapter, RiskMetrics
+except Exception:
+    PortfolioAnalytics = None
+    PortfolioAnalyticsAdapter = None
+    RiskMetrics = None
 
 __all__ = [
     # Data
@@ -107,6 +162,9 @@ __all__ = [
     "run_backtester_benchmark",
     "run_pipeline_benchmark",
     "run_benchmark_suite",
+    "PortfolioAnalytics",
+    "PortfolioAnalyticsAdapter",
+    "RiskMetrics",
     # Multi-asset
     "CryptoClient",
     "USStockClient",

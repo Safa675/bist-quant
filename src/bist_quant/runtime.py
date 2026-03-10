@@ -4,9 +4,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+APP_DIR_NAME = "bist-quant"
 ENV_PROJECT_ROOT = "BIST_PROJECT_ROOT"
 ENV_DATA_DIR = "BIST_DATA_DIR"
 ENV_REGIME_DIR = "BIST_REGIME_DIR"
+ENV_CACHE_DIR = "BIST_CACHE_DIR"
 
 
 class RuntimePathError(RuntimeError):
@@ -41,47 +43,57 @@ def _expand_path(value: str | Path | None) -> Path | None:
     return Path(value).expanduser().resolve()
 
 
+def _xdg_data_home() -> Path:
+    return (
+        Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        .expanduser()
+        .resolve()
+    )
+
+
+def _xdg_cache_home() -> Path:
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")).expanduser().resolve()
+
+
+def default_project_root(*, create: bool = False) -> Path:
+    root = _xdg_data_home() / APP_DIR_NAME
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def default_data_dir(*, create: bool = False) -> Path:
+    data_dir = default_project_root(create=create) / "data"
+    if create:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
+
+def default_regime_dir(*, create: bool = False) -> Path:
+    regime_dir = default_project_root(create=create) / "regime" / "simple_regime"
+    if create:
+        regime_dir.mkdir(parents=True, exist_ok=True)
+    return regime_dir
+
+
+def default_cache_dir(*, create: bool = False) -> Path:
+    cache_dir = _xdg_cache_home() / APP_DIR_NAME
+    if create:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
 def _default_project_root() -> Path:
-    import sys
-
-    module_root = Path(__file__).resolve().parents[2]
-    cwd = Path.cwd().resolve()
-
-    # In packaged mode (PyInstaller), __file__ resolves inside a volatile
-    # _MEI* temp directory.  Prefer a stable user data directory so the
-    # backend never depends on a path that is deleted on exit / reboot.
-    frozen = getattr(sys, "frozen", False)
-    if frozen:
-        # XDG_DATA_HOME / bistquant  (e.g. ~/.local/share/bistquant)
-        xdg_data = Path(
-            os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
-        ).resolve()
-        stable_root = xdg_data / "bistquant"
-        if (stable_root / "data").exists():
-            return stable_root
-
-    candidates = [cwd, *cwd.parents, module_root]
-    for candidate in candidates:
-        if (candidate / "data").exists():
-            return candidate
-    return module_root
+    """Return the library's user-scoped home directory."""
+    return default_project_root(create=True)
 
 
 def _resolve_regime_dir(project_root: Path, explicit_regime_dir: Path | None) -> Path:
     if explicit_regime_dir is not None:
         return explicit_regime_dir
-
-    candidates = [
-        project_root / "outputs" / "regime" / "simple_regime",
-        project_root / "outputs" / "regime",
-        project_root / "regime_filter",
-        project_root / "Regime Filter",
-        project_root / "Simple Regime Filter",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[-1]
+    regime_dir = project_root / "regime" / "simple_regime"
+    regime_dir.mkdir(parents=True, exist_ok=True)
+    return regime_dir
 
 
 def _resolve_regime_outputs_dir(regime_dir: Path) -> Path:
@@ -103,7 +115,13 @@ def resolve_runtime_paths(
     explicit_regime_dir = _expand_path(regime_dir) or _expand_path(os.getenv(ENV_REGIME_DIR))
 
     resolved_project_root = explicit_project_root or _default_project_root()
-    resolved_data_dir = explicit_data_dir or (resolved_project_root / "data")
+    if explicit_data_dir is not None:
+        resolved_data_dir = explicit_data_dir
+    elif explicit_project_root is not None:
+        resolved_data_dir = resolved_project_root / "data"
+        resolved_data_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        resolved_data_dir = default_data_dir(create=True)
     resolved_regime_dir = _resolve_regime_dir(resolved_project_root, explicit_regime_dir)
     resolved_regime_outputs_dir = _resolve_regime_outputs_dir(resolved_regime_dir)
 
