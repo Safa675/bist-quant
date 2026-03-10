@@ -11,15 +11,6 @@
 pip install bist-quant
 ```
 
-Optional extras:
-
-```bash
-pip install "bist-quant[providers]" # httpx/yfinance/borsapy-backed providers
-pip install "bist-quant[borsapy]"   # BIST market data integrations
-pip install "bist-quant[ml]"        # reserved for future ML workflows
-pip install "bist-quant[full]"      # all optional research features
-```
-
 ## Development Installation
 
 ```bash

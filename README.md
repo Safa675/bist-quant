@@ -10,15 +10,6 @@
 pip install bist-quant
 ```
 
-Optional extras:
-
-```bash
-pip install "bist-quant[providers]" # httpx/yfinance/borsapy-backed providers
-pip install "bist-quant[borsapy]"   # BIST market data integrations
-pip install "bist-quant[ml]"        # reserved for future ML workflows
-pip install "bist-quant[full]"      # all optional research features
-```
-
 ## Quick Start
 
 ```python
@@ -43,14 +34,14 @@ By default the library uses user-scoped directories:
 - cache: `~/.cache/bist-quant`
 
 Override them with `BIST_DATA_DIR`, `BIST_REGIME_DIR`, and `BIST_CACHE_DIR` when needed.
-If you are working from local parquet/CSV files without installing provider extras, set `BIST_DATA_SOURCE=local`.
+If you are working from local parquet/CSV files, set `BIST_DATA_SOURCE=local`.
 
 ## What Ships in the Library
 
 - `portfolio.py` - `PortfolioEngine` and backtest entry points
 - `signals/` - factor and signal builders
 - `analytics/` - performance analytics and metrics
-- `clients/` - optional data-provider integrations
+- `clients/` - built-in data-provider integrations
 - `common/` - data loading, backtester, risk, and shared helpers
 - `configs/` - strategy registry and configuration loaders
 - `regime/` - regime classification helpers

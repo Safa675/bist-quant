@@ -54,24 +54,12 @@ dependencies = [
     "pyyaml>=6.0",
     "python-dateutil>=2.8.0",
     "tqdm>=4.65.0",
+    "httpx>=0.27.0",
+    "yfinance>=0.2.0",
+    "borsapy>=0.8.3",
 ]
 
 [project.optional-dependencies]
-providers = [
-    "httpx>=0.27.0",
-    "yfinance>=0.2.0",
-    "borsapy>=1.0.0",
-]
-multi-asset = [
-    "yfinance>=0.2.0",
-]
-borsapy = [
-    "borsapy>=1.0.0",
-]
-ml = [
-    "scikit-learn>=1.3.0",
-    "lightgbm>=4.0.0",
-]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -79,9 +67,6 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.0.280",
     "mypy>=1.4.0",
-]
-full = [
-    "bist-quant[providers,multi-asset,borsapy,ml]",
 ]
 
 [project.scripts]
