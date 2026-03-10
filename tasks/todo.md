@@ -708,3 +708,39 @@ Verification:
 - `pytest tests/test_docs_public_story.py tests/test_quickstart_runtime.py tests/test_dependency_strategy.py -v` -> PASS (`8 passed`)
 - stale-pattern grep across `docs/` for old quickstart forms -> PASS (no matches)
 - `git status --short` after commit -> only unrelated frontend/app changes remain
+
+## Library Publish Readiness — Comprehensive Module Verification
+
+Date: 2026-03-10
+
+Checklist:
+- [x] Add a regression that imports every published `bist_quant` module.
+- [x] Run the import-smoke regression and capture failures.
+- [x] Fix any import/runtime blockers surfaced by full-module verification.
+- [x] Re-run the full published-library verification suite.
+- [x] Rebuild artifacts and confirm package integrity after the verification pass.
+
+Definition of done:
+- Every module included in the published wheel imports successfully in the source tree.
+- Library regression suite passes.
+- Artifacts still build and pass `twine check`.
+
+Review:
+- Added `tests/test_all_published_modules_import.py` to enumerate and import every module included in the published wheel, excluding the app-facing packages already removed from release artifacts.
+- Ran the import-smoke verification and confirmed all published modules import successfully.
+- Ran a broad published-library verification bundle spanning unit tests, integration workflow tests, provider tests, package-boundary tests, runtime/default-path tests, docs/install contract tests, and the new all-modules import smoke.
+- Found one real verification blocker during the broad suite: `tests/test_borsapy_indicators.py` was still importing the old legacy top-level module path `borsapy_indicators`.
+- Updated `tests/test_borsapy_indicators.py` to use the packaged import paths under `bist_quant.signals.borsapy_indicators` and `bist_quant.DataLoader`.
+
+Verification:
+- `pytest tests/test_all_published_modules_import.py -v` -> PASS (`1 passed`)
+- `pytest tests/unit tests/integration/test_backtest_workflow.py tests/test_borsapy_indicators.py tests/test_signals_batch.py tests/test_fixed_income_provider.py tests/test_fx_enhanced_provider.py tests/test_economic_calendar_provider.py tests/test_derivatives_provider.py tests/test_streaming_provider.py tests/test_all_published_modules_import.py tests/test_quickstart_runtime.py tests/test_docs_public_story.py tests/test_dependency_strategy.py tests/test_package_boundary.py tests/test_version_coherence.py tests/test_public_api_surface.py tests/test_runtime_defaults.py -v` -> PASS (`271 passed`, `4 skipped`)
+- `python -m build && python -m twine check dist/*` -> PASS
+- Installed-wheel behavior smoke (`bist_quant==0.3.1` from TestPyPI with local data mode) -> PASS:
+  - strategy registry lookup
+  - signal registry lookup
+  - `DataPaths` default/runtime behavior
+  - `DataLoader.load_prices()` + close panel build
+  - `signals.factory.build_signal()` with runtime context
+  - `signals.borsapy_indicators` local indicator calculations
+  - `PortfolioEngine.run_factor("momentum")` with `use_regime_filter=False`

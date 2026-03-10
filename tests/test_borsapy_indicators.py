@@ -6,13 +6,9 @@ Run from project root:
     python Models/signals/test_borsapy_indicators.py
 """
 
-import sys
 from pathlib import Path
 
-# Add project paths
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "Models" / "common"))
-sys.path.insert(0, str(PROJECT_ROOT / "Models" / "signals"))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_indicator_calculations():
@@ -23,7 +19,7 @@ def test_indicator_calculations():
 
     import pandas as pd
     import numpy as np
-    from borsapy_indicators import BorsapyIndicators
+    from bist_quant.signals.borsapy_indicators import BorsapyIndicators
 
     # Create sample price data
     np.random.seed(42)
@@ -75,9 +71,7 @@ def test_indicator_calculations():
 
     # Test Stochastic
     print("\n5. Testing Stochastic panel...")
-    stoch_panel = BorsapyIndicators.build_stochastic_panel(
-        high_df, low_df, close_df, output="k"
-    )
+    stoch_panel = BorsapyIndicators.build_stochastic_panel(high_df, low_df, close_df, output="k")
     latest_stoch = stoch_panel.iloc[-1]
     print(f"   Latest %K values: {latest_stoch.round(2).to_dict()}")
 
@@ -110,7 +104,7 @@ def test_multi_indicator_panel():
 
     import pandas as pd
     import numpy as np
-    from borsapy_indicators import build_multi_indicator_panel
+    from bist_quant.signals.borsapy_indicators import build_multi_indicator_panel
 
     # Create sample data
     np.random.seed(42)
@@ -135,8 +129,7 @@ def test_multi_indicator_panel():
     # Build multiple indicators
     print("\nBuilding multiple indicators at once...")
     panels = build_multi_indicator_panel(
-        close_df, high_df, low_df,
-        indicators=["rsi", "macd", "bb", "atr", "stoch"]
+        close_df, high_df, low_df, indicators=["rsi", "macd", "bb", "atr", "stoch"]
     )
 
     print(f"\nBuilt {len(panels)} indicator panels:")
@@ -154,7 +147,7 @@ def test_borsapy_api_fetch():
     print("TEST 3: Borsapy API Indicator Fetch")
     print("=" * 60)
 
-    from borsapy_indicators import BorsapyIndicators, BORSAPY_AVAILABLE
+    from bist_quant.signals.borsapy_indicators import BORSAPY_AVAILABLE, BorsapyIndicators
 
     if not BORSAPY_AVAILABLE:
         print("  ⚠️  Borsapy not available, skipping API tests")
@@ -162,9 +155,7 @@ def test_borsapy_api_fetch():
 
     # Test single ticker
     print("\n1. Fetching THYAO with RSI indicator...")
-    df = BorsapyIndicators.fetch_indicators_for_ticker(
-        "THYAO", indicators=["rsi"], period="3ay"
-    )
+    df = BorsapyIndicators.fetch_indicators_for_ticker("THYAO", indicators=["rsi"], period="3ay")
     if not df.empty:
         print(f"   Columns: {list(df.columns)}")
         print(f"   Rows: {len(df)}")
@@ -195,13 +186,12 @@ def test_with_real_data():
     print("=" * 60)
 
     try:
-        from data_loader import DataLoader
-        from borsapy_indicators import BorsapyIndicators
+        from bist_quant import DataLoader
+        from bist_quant.signals.borsapy_indicators import BorsapyIndicators
 
         # Initialize loader
         data_dir = PROJECT_ROOT / "data"
-        regime_dir = PROJECT_ROOT / "Regime Filter"
-        loader = DataLoader(data_dir=data_dir, regime_model_dir=regime_dir)
+        loader = DataLoader(data_paths=None)
 
         # Load real prices
         prices_file = data_dir / "bist_prices_full.parquet"
@@ -239,6 +229,7 @@ def test_with_real_data():
     except Exception as e:
         print(f"  ⚠️  Real data test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -253,6 +244,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Local indicator test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     try:
@@ -260,6 +252,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Multi-indicator test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     try:
@@ -267,6 +260,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Borsapy API test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     try:
@@ -274,6 +268,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Real data test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     print("\n" + "#" * 60)
