@@ -69,3 +69,13 @@ temp_*.html
 .agents/
 skills-lock.json
 claude.md
+AGENTS.md
+tasks/
+
+# ===== NON-LIBRARY APP / DEV SURFACES =====
+.streamlit/
+frontend/
+deploy/
+playwright-report/
+test-results/
+borsapy_indicators.py
