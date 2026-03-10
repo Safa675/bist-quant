@@ -15,7 +15,7 @@ exclude = [
 
 [project]
 name = "bist-quant"
-version = "0.3.0"
+version = "0.3.1"
 description = "Quantitative trading library for BIST"
 readme = "README.md"
 license = {text = "Apache-2.0"}

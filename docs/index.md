@@ -1,6 +1,6 @@
 # BIST Quant
 
-**Quantitative research and backtesting library for Borsa Istanbul (BIST).** Version 0.3.0.
+**Quantitative research and backtesting library for Borsa Istanbul (BIST).** Version 0.3.1.
 
 `bist_quant` is a library-first toolkit for BIST research workflows: factor construction, event-loop backtesting, portfolio analytics, and provider integrations that can be used from notebooks, scripts, dashboards, or external applications.
 
