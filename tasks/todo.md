@@ -673,3 +673,38 @@ Verification:
   - `bist-quant --version` -> PASS (`bist-quant 0.3.0`)
   - installed import defaults -> PASS (user-scoped data/cache/project-root paths)
   - corrected quickstart-style example -> PASS (`prices_shape=(1360918, 7)`, `sharpe=1.7774`, `cagr=0.3294`)
+
+## Library Publish Readiness — Final Cleanup and Release Prep
+
+Date: 2026-03-09
+
+Checklist:
+- [x] Clean remaining stale docs/examples that referenced old constructor/result shapes.
+- [x] Re-run focused docs and release-readiness verification.
+- [x] Create a library-release preparation commit without frontend/app changes.
+- [x] Prepare the PyPI publish command checklist.
+
+Definition of done:
+- Public docs/examples consistently use the validated library API.
+- Release-prep work is committed.
+- Publish commands are documented and ready to run.
+
+Review:
+- Updated the remaining stale examples and guides to replace:
+  - `PortfolioEngine(loader=loader)` -> `PortfolioEngine(data_loader=loader, options={"use_regime_filter": False})`
+  - `result.metrics[...]` -> `result[...]`
+- Cleaned the following docs/examples:
+  - `docs/examples/basic-backtest.md`
+  - `docs/examples/custom-signals.md`
+  - `docs/examples/portfolio-optimization.md`
+  - `docs/user-guide/backtesting.md`
+  - `docs/user-guide/portfolio.md`
+  - `docs/user-guide/signals.md`
+  - `src/bist_quant/README.md`
+- Created commit `c80ce94` with message: `chore: prepare bist_quant for standalone library release`
+- Left unrelated frontend/app working tree changes uncommitted.
+
+Verification:
+- `pytest tests/test_docs_public_story.py tests/test_quickstart_runtime.py tests/test_dependency_strategy.py -v` -> PASS (`8 passed`)
+- stale-pattern grep across `docs/` for old quickstart forms -> PASS (no matches)
+- `git status --short` after commit -> only unrelated frontend/app changes remain

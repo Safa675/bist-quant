@@ -72,4 +72,4 @@ Every folder under `src/bist_quant/` has a `README.md` with file-level API refer
 
 ## License
 
-MIT — see [LICENSE](https://github.com/Safa675/bist-quant/blob/main/LICENSE).
+Apache License 2.0 - see [LICENSE](https://github.com/Safa675/bist-quant/blob/main/LICENSE).

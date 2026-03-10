@@ -15,7 +15,7 @@ Optional extras:
 ```bash
 pip install "bist-quant[providers]" # httpx/yfinance/borsapy-backed providers
 pip install "bist-quant[borsapy]"   # BIST market data integrations
-pip install "bist-quant[ml]"        # machine-learning extras
+pip install "bist-quant[ml]"        # reserved for future ML workflows
 pip install "bist-quant[full]"      # all optional research features
 ```
 
@@ -83,4 +83,4 @@ Contributor setup lives in `CONTRIBUTING.md`. App-stack deployment notes remain 
 
 ## License
 
-MIT - see `LICENSE`.
+Apache License 2.0 - see `LICENSE`.
