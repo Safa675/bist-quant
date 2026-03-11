@@ -1,6 +1,6 @@
 # bist_quant
 
-**Quantitative research and backtesting library for Borsa Istanbul (BIST).** Version 0.3.2.
+**Quantitative research and backtesting library for Borsa Istanbul (BIST).** Version 0.3.3.
 
 `bist_quant` is a Python library for factor research, signal construction, backtesting, portfolio analytics, and BIST-focused data workflows. It is designed to be usable from notebooks, scripts, dashboards, and external applications without requiring a repo checkout.
 

@@ -5,6 +5,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("fastapi", reason="fastapi not installed; api tests skipped")
+
 from bist_quant.api.jobs import JobManager
 
 

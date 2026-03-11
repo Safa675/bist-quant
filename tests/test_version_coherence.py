@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import re
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python 3.10 fallback
 from pathlib import Path
 
 import bist_quant
