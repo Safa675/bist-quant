@@ -205,7 +205,9 @@ class Backtester:
         if signal_lag_days < 0:
             raise ValueError(f"signal_lag_days must be >= 0, got {signal_lag_days}")
         if signal_lag_days == 0:
-            logger.warning("   ⚠️  signal_lag_days=0 (lookahead risk if signals use same-day close)")
+            logger.warning(
+                "   ⚠️  signal_lag_days=0 (lookahead risk if signals use same-day close)"
+            )
 
         backtest_start = start_date if start_date is not None else signals.index.min()
         backtest_end = end_date if end_date is not None else signals.index.max()
