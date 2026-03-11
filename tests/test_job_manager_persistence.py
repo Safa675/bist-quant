@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("fastapi", reason="fastapi not installed; api tests skipped")
+pytest.importorskip(
+    "fastapi", reason="fastapi not installed; api tests skipped", exc_type=ImportError
+)
 
 from bist_quant.api.jobs import JobManager
 

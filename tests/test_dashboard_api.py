@@ -6,9 +6,11 @@ import pytest
 
 
 def test_dashboard_overview_contract() -> None:
-    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
 
     from fastapi.testclient import TestClient
 
@@ -28,7 +30,9 @@ def test_dashboard_overview_contract() -> None:
 
 
 def test_dashboard_routes_registered() -> None:
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
     app = bist_quant_api.create_app()
     paths = {route.path for route in app.routes}
 

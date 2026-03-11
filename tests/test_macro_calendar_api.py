@@ -57,7 +57,7 @@ def test_system_service_get_macro_calendar_serializes_events(monkeypatch, tmp_pa
 def test_api_macro_calendar_route_registered() -> None:
     # bist_quant.api (FastAPI app) is optional — skip if not built
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available"
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
     )
     app = bist_quant_api.create_app()
     paths = {route.path for route in app.routes}

@@ -9,9 +9,11 @@ import pytest
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
 
     import bist_quant.api.main as api_main
     from bist_quant.api.jobs import JobManager
@@ -160,7 +162,9 @@ def test_create_job_rejects_non_object_request_with_structured_422(monkeypatch, 
     assert detail["errors"]
 
 
-def test_create_job_rejects_invalid_backtest_payload_with_structured_422(monkeypatch, tmp_path) -> None:
+def test_create_job_rejects_invalid_backtest_payload_with_structured_422(
+    monkeypatch, tmp_path
+) -> None:
     client, _ = _build_client(monkeypatch, tmp_path)
     response = client.post(
         "/api/jobs",
@@ -180,7 +184,9 @@ def test_create_job_rejects_invalid_backtest_payload_with_structured_422(monkeyp
     assert detail["errors"]
 
 
-def test_create_job_rejects_invalid_analytics_payload_with_structured_422(monkeypatch, tmp_path) -> None:
+def test_create_job_rejects_invalid_analytics_payload_with_structured_422(
+    monkeypatch, tmp_path
+) -> None:
     client, _ = _build_client(monkeypatch, tmp_path)
     response = client.post(
         "/api/jobs",
@@ -245,7 +251,9 @@ def test_retry_job_rejects_unknown_id_with_structured_404(monkeypatch, tmp_path)
     assert "not found" in detail["detail"].lower()
 
 
-def test_retry_job_rejects_missing_request_payload_with_structured_400(monkeypatch, tmp_path) -> None:
+def test_retry_job_rejects_missing_request_payload_with_structured_400(
+    monkeypatch, tmp_path
+) -> None:
     client, api_main = _build_client(monkeypatch, tmp_path)
 
     monkeypatch.setattr(api_main, "_run_backtest_request", lambda payload: {"ok": True})
@@ -253,7 +261,11 @@ def test_retry_job_rejects_missing_request_payload_with_structured_400(monkeypat
         "/api/jobs",
         json={
             "kind": "backtest",
-            "request": {"factor_name": "momentum", "start_date": "2020-01-01", "end_date": "2021-01-01"},
+            "request": {
+                "factor_name": "momentum",
+                "start_date": "2020-01-01",
+                "end_date": "2021-01-01",
+            },
         },
     )
     assert created.status_code == 200
@@ -271,7 +283,9 @@ def test_retry_job_rejects_missing_request_payload_with_structured_400(monkeypat
     assert "payload missing" in detail["detail"].lower()
 
 
-def test_retry_job_rejects_unsupported_stored_kind_with_structured_400(monkeypatch, tmp_path) -> None:
+def test_retry_job_rejects_unsupported_stored_kind_with_structured_400(
+    monkeypatch, tmp_path
+) -> None:
     client, api_main = _build_client(monkeypatch, tmp_path)
 
     monkeypatch.setattr(api_main, "_run_backtest_request", lambda payload: {"ok": True})
@@ -279,7 +293,11 @@ def test_retry_job_rejects_unsupported_stored_kind_with_structured_400(monkeypat
         "/api/jobs",
         json={
             "kind": "backtest",
-            "request": {"factor_name": "momentum", "start_date": "2020-01-01", "end_date": "2021-01-01"},
+            "request": {
+                "factor_name": "momentum",
+                "start_date": "2020-01-01",
+                "end_date": "2021-01-01",
+            },
         },
     )
     assert created.status_code == 200

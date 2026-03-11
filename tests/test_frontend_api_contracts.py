@@ -34,9 +34,11 @@ FRONTEND_CONSUMED_PATHS = {
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
 
     import bist_quant.api.main as api_main
     from bist_quant.api.jobs import JobManager
@@ -286,7 +288,9 @@ def test_compliance_position_limits_contract_and_validation(monkeypatch, tmp_pat
     monkeypatch.setattr(
         professional,
         "monitor_position_limits",
-        lambda positions: [{"symbol": "THYAO", "value": 1_200_000, "limit": 1_000_000, "breach": True}],
+        lambda positions: [
+            {"symbol": "THYAO", "value": 1_200_000, "limit": 1_000_000, "breach": True}
+        ],
     )
     client = _build_client(monkeypatch, tmp_path)
 

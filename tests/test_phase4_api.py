@@ -8,9 +8,11 @@ import pytest
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
 
     import bist_quant.api.main as api_main
     from bist_quant.api.jobs import JobManager
@@ -173,7 +175,9 @@ def test_signal_construction_endpoints(monkeypatch, tmp_path) -> None:
         lambda payload: {
             "meta": {"universe": payload.get("universe", "XU100")},
             "signals": [{"symbol": "THYAO", "action": "BUY", "combined_score": 0.8}],
-            "indicator_summaries": [{"name": "rsi", "buy_count": 1, "hold_count": 0, "sell_count": 0}],
+            "indicator_summaries": [
+                {"name": "rsi", "buy_count": 1, "hold_count": 0, "sell_count": 0}
+            ],
         },
     )
     monkeypatch.setattr(

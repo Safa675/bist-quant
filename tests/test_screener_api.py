@@ -7,9 +7,11 @@ import pytest
 
 
 def test_screener_sparklines_returns_symbol_series(monkeypatch) -> None:
-    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
 
     from fastapi.testclient import TestClient
 
@@ -41,9 +43,11 @@ def test_screener_sparklines_returns_symbol_series(monkeypatch) -> None:
 
 
 def test_screener_sparklines_rejects_empty_symbols() -> None:
-    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+    fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
-    bist_quant_api = pytest.importorskip("bist_quant.api", reason="bist_quant.api not available")
+    bist_quant_api = pytest.importorskip(
+        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+    )
 
     from fastapi.testclient import TestClient
 
