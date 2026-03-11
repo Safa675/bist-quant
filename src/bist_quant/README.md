@@ -1,6 +1,6 @@
 # `bist_quant` — Borsa İstanbul Quantitative Research Library
 
-The root package of the `bist_quant` library. Version: **0.3.1**
+The root package of the `bist_quant` library. Version: **0.3.2**
 
 ## Purpose
 

@@ -40,4 +40,4 @@ def test_cli_and_api_versions_match_package_version() -> None:
     assert "from . import __version__" in cli_source
     assert 'version=f"%(prog)s {__version__}"' in cli_source
     assert api_match is not None
-    assert api_match.group(1).strip() == "PACKAGE_VERSION"
+    assert api_match.group(1).strip() == "__version__"

@@ -79,4 +79,3 @@ app/
 deploy/
 playwright-report/
 test-results/
-borsapy_indicators.py

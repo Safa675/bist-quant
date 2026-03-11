@@ -15,7 +15,7 @@ exclude = [
 
 [project]
 name = "bist-quant"
-version = "0.3.1"
+version = "0.3.2"
 description = "Quantitative trading library for BIST"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -81,7 +81,12 @@ Changelog = "https://github.com/Safa675/BIST/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/CONTRIBUTING.md",
+    "/docs",
     "/src/bist_quant",
+    "/README.md",
+    "/LICENSE",
+    "/mkdocs.yml",
 ]
 exclude = [
     "/data",

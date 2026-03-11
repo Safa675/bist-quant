@@ -9,7 +9,7 @@ from typing import Any, Callable, cast
 
 import pandas as pd
 
-from bist_quant import __version__ as PACKAGE_VERSION
+from bist_quant import __version__
 
 try:
     from fastapi import APIRouter, FastAPI, Query
@@ -352,6 +352,7 @@ def macro_calendar(
 def dashboard_overview(lookback: int = Query(default=504, ge=30, le=3000)) -> dict[str, Any]:
     data_paths = get_data_paths()
     prices = _load_xu100_frame()
+    macro = _macro_payload(data_paths, lookback)
 
     if prices.empty:
         return {
@@ -365,6 +366,7 @@ def dashboard_overview(lookback: int = Query(default=504, ge=30, le=3000)) -> di
             },
             "regime": {"label": "Unknown"},
             "timeline": [],
+            "macro": macro,
             "lookback": lookback,
             "error": "XU100 price data not available",
         }
@@ -372,7 +374,6 @@ def dashboard_overview(lookback: int = Query(default=504, ge=30, le=3000)) -> di
     prices = prices.tail(lookback)
 
     regime = _regime_payload(data_paths)
-    macro = _macro_payload(data_paths, lookback)
 
     timeline = [
         {"date": str(row.Date.date()), "close": float(row.Close)}
@@ -665,7 +666,7 @@ def retry_job(job_id: str) -> dict[str, Any]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="BIST Quant API", version=PACKAGE_VERSION)
+    app = FastAPI(title="BIST Quant API", version=__version__)
     app.add_exception_handler(RequestValidationError, jobs_request_validation_exception_handler)
     app.add_middleware(
         CORSMiddleware,
