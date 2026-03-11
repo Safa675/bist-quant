@@ -11,8 +11,8 @@ from importlib import import_module
 from typing import Any
 import warnings
 
-__version__ = "0.3.2"
-__author__ = "BIST Quant Team"
+__version__ = "0.3.3"
+__author__ = "Safa Öksüz"
 
 # =============================================================================
 # CORE COMPONENTS

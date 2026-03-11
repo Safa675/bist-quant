@@ -15,13 +15,13 @@ exclude = [
 
 [project]
 name = "bist-quant"
-version = "0.3.2"
+version = "0.3.3"
 description = "Quantitative trading library for BIST"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
-    {name = "BIST Quant Team", email = "team@bistquant.com"}
+    {name = "Safa Öksüz", email = "safa.okksuz@gmail.com"}
 ]
 keywords = [
     "quantitative finance",
