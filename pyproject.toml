@@ -156,6 +156,9 @@ omit = [
     "src/bist_quant/engines/errors.py",
     "src/bist_quant/engines/types.py",
 
+    # API package (excluded from wheel; requires fastapi, not installed in CI)
+    "src/bist_quant/api/*",
+
     # Jobs package
     "src/bist_quant/jobs/*",
 
