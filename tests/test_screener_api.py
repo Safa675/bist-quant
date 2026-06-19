@@ -10,12 +10,12 @@ def test_screener_sparklines_returns_symbol_series(monkeypatch) -> None:
     fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+        "server.api", reason="server.api not available", exc_type=ImportError
     )
 
     from fastapi.testclient import TestClient
 
-    import bist_quant.engines.stock_filter as stock_filter
+    import server.engines.stock_filter as stock_filter
 
     dates = pd.date_range("2024-01-01", periods=80, freq="B")
     close_df = pd.DataFrame(
@@ -46,7 +46,7 @@ def test_screener_sparklines_rejects_empty_symbols() -> None:
     fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+        "server.api", reason="server.api not available", exc_type=ImportError
     )
 
     from fastapi.testclient import TestClient

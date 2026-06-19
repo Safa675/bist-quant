@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-LOGGER = logging.getLogger("bist_quant.engines.technical_scanner")
+LOGGER = logging.getLogger("server.engines.technical_scanner")
 
 try:  # optional dependency
     import borsapy as bp

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from bist_quant.engines import factor_lab
+from server.engines import factor_lab
 
 
 def test_available_factor_names_include_external_consensus() -> None:

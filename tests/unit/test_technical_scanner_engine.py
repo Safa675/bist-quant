@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from bist_quant.engines.technical_scanner import TechnicalScannerEngine
+from server.engines.technical_scanner import TechnicalScannerEngine
 
 
 class _DummyBorsapy:

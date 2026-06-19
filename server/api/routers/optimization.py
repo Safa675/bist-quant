@@ -8,8 +8,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from bist_quant.api.schemas import OptimizationRunRequest
-from bist_quant.services import CoreBackendService
+from server.api.schemas import OptimizationRunRequest
+from server.services import CoreBackendService
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def optimization_run(
             )
 
         # Async job path
-        from bist_quant.api.main import job_manager
+        from server.api.main import job_manager
 
         def _run() -> dict[str, Any]:
             core = CoreBackendService(strict_paths=False)

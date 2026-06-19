@@ -7,13 +7,13 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from bist_quant.api.schemas import (
+from server.api.schemas import (
     SignalConstructionBacktestRequest,
     SignalConstructionFiveFactorRequest,
     SignalConstructionOrthogonalizationRequest,
     SignalConstructionSnapshotRequest,
 )
-from bist_quant.services import CoreBackendService
+from server.services import CoreBackendService
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/signal-construction", tags=["signal-construction
 def signal_construction_snapshot(payload: SignalConstructionSnapshotRequest) -> dict[str, Any]:
     """Run multi-indicator signal snapshot."""
     try:
-        from bist_quant.engines.signal_construction import run_signal_snapshot
+        from server.engines.signal_construction import run_signal_snapshot
 
         return run_signal_snapshot(payload.model_dump())
     except Exception as exc:
@@ -36,7 +36,7 @@ def signal_construction_snapshot(payload: SignalConstructionSnapshotRequest) -> 
 def signal_construction_backtest(payload: SignalConstructionBacktestRequest) -> dict[str, Any]:
     """Run multi-indicator signal backtest."""
     try:
-        from bist_quant.engines.signal_construction import run_signal_backtest
+        from server.engines.signal_construction import run_signal_backtest
 
         return run_signal_backtest(payload.model_dump())
     except Exception as exc:

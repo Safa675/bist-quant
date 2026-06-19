@@ -1,57 +1,40 @@
-# `settings/` — Environment Configuration
+# `settings/` — Library Configuration Utilities
 
 ## Purpose
 
-Loads all production settings from environment variables with type-safe parsing, defaults, and backward-compatible alias resolution. The `ProductionSettings` dataclass is the single source of truth for runtime configuration.
+Shared path helpers, output directory resolution, and environment variable parsing primitives used by both the library and the server package.
+
+Production API settings (`ProductionSettings`) live in `server/settings.py`.
 
 ## Files
 
 ```
 settings/
-├── settings.py      # ProductionSettings dataclass + load_production_settings()
-└── environment.py   # Environment variable parsing primitives
+├── __init__.py      # get_output_dir, PROJECT_ROOT, re-exports
+├── environment.py   # Environment variable parsing primitives
+└── streaming.py     # TradingView streaming auth for realtime quotes
 ```
 
 ---
 
-## `settings.py` — Production Settings
+## `__init__.py` — Path Helpers
 
-`ProductionSettings` is a `frozen=True` dataclass loaded entirely from environment variables.
+| Symbol | Description |
+|---|---|
+| `PROJECT_ROOT` | Repository root (four `.parent` hops from this package) |
+| `get_output_dir(*subpaths)` | Resolves `BIST_QUANT_OUTPUT_DIR` or `./outputs` |
 
-### Key Fields
+---
 
-| Field | Env Var | Default | Description |
-|---|---|---|---|
-| `environment` | `BIST_APP_ENV` / `ENVIRONMENT` | `"development"` | Deployment environment |
-| `log_level` | `BIST_LOG_LEVEL` | `"INFO"` | Logging level |
-| `json_logs` | `BIST_JSON_LOGS` | `False` | Structured JSON log output |
-| `cors_origins` | `BIST_CORS_ORIGINS` | `["*"]` | CORS allowed origins (comma-separated) |
-| `auth_mode` | `BIST_AUTH_MODE` | `"none"` | `"none"`, `"api_key"`, `"jwt"`, `"either"` |
-| `api_keys` | `BIST_API_KEYS` | `[]` | Comma-separated valid API keys |
-| `jwt_secret` | `BIST_JWT_SECRET` | `None` | JWT signing secret |
-| `jwt_algorithm` | `BIST_JWT_ALGORITHM` | `"HS256"` | JWT algorithm |
-| `rate_limit_enabled` | `BIST_RATE_LIMIT_ENABLED` | `False` | Enable rate limiting |
-| `rate_limit_max_requests` | `BIST_RATE_LIMIT_MAX_REQUESTS` | `100` | Requests per window |
-| `enforce_https` | `BIST_ENFORCE_HTTPS` | `False` | Redirect HTTP → HTTPS |
-| `telemetry_enabled` | `BIST_TELEMETRY_ENABLED` | `False` | Crash telemetry |
-| `tradingview_auth_token` | `BIST_TV_AUTH_TOKEN` | `None` | TradingView streaming auth |
+## `streaming.py` — TradingView Auth
 
-### Computed Properties
-
-- `auth_enabled` — `True` when `auth_mode != "none"`.
-- `tradingview_auth_config` — Formats auth token into `{"auth_token": "..."}` dict.
-- `is_rate_limit_exempt(path)` — Checks `path` prefix against exempt list (e.g. `/health`, `/metrics`).
-
-### Loading
+Library-side config for `realtime/quotes.py`. Reads `BIST_TRADINGVIEW_AUTH_TOKEN`, `TRADINGVIEW_AUTH_TOKEN`, and connect timeout env vars.
 
 ```python
-from bist_quant.settings.settings import load_production_settings
+from bist_quant.settings import load_streaming_auth_config
 
-settings = load_production_settings()          # reads from os.environ
-settings = load_production_settings(environ={"BIST_AUTH_MODE": "api_key", ...})  # inject for testing
+config = load_streaming_auth_config()
 ```
-
-**Alias resolution in `from_env()`:** Normalizes legacy variable names (e.g. `BIST_APP_ENV` → `ENVIRONMENT`) so both old and new names work.
 
 ---
 
@@ -64,14 +47,16 @@ settings = load_production_settings(environ={"BIST_AUTH_MODE": "api_key", ...}) 
 | `parse_env_int(name, default, minimum?, maximum?, environ?)` | Parses int and clamps to `[minimum, maximum]` |
 | `parse_env_list(name, environ?)` | Comma-split into cleaned list |
 
-All functions accept an optional `environ` mapping argument for dependency injection in tests — always use this instead of `os.environ` directly in test code.
+All functions accept an optional `environ` mapping argument for dependency injection in tests.
 
 ---
 
-## Local Rules for Contributors
+## Server Settings
 
-1. **All settings must come from environment variables** — no hardcoded secrets or credentials anywhere in the codebase.
-2. **Use `parse_env_*` helpers** — do not use `os.environ.get()` directly in `settings.py`. The helpers handle empty strings, type coercion, and clamping.
-3. **`frozen=True`** — `ProductionSettings` is immutable after construction. Do not add mutable fields.
-4. **Add alias resolution in `from_env()`** when renaming an environment variable — both old and new names must work for at least one major version.
-5. **`environ` injection** — All `parse_env_*` functions accept an `environ` parameter. Tests must inject a dict instead of mutating `os.environ`.
+For JWT, CORS, rate limits, and API middleware configuration, see `server/settings.py`:
+
+```python
+from server.settings import load_production_settings
+
+settings = load_production_settings()
+```

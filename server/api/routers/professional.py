@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from bist_quant.api.schemas import (
+from server.api.schemas import (
     CryptoSizingRequest,
     GreeksRequest,
     PipValueRequest,

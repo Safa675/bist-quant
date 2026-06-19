@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.api_route_helpers import collect_route_paths
+
 
 FRONTEND_CONSUMED_PATHS = {
     "/api/analytics/benchmark/xu100",
@@ -37,11 +39,11 @@ def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+        "server.api", reason="server.api not available", exc_type=ImportError
     )
 
-    import bist_quant.api.main as api_main
-    from bist_quant.api.jobs import JobManager
+    import server.api.main as api_main
+    from server.api.jobs import JobManager
     from fastapi.testclient import TestClient
 
     monkeypatch.setattr(
@@ -56,7 +58,7 @@ def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 def test_frontend_consumed_routes_registered(monkeypatch, tmp_path) -> None:
     client = _build_client(monkeypatch, tmp_path)
-    paths = {route.path for route in client.app.routes}
+    paths = collect_route_paths(client.app.routes)
 
     dynamic_paths = {"/api/factors/{name}", "/api/jobs/{job_id}", "/api/jobs/{job_id}/retry"}
 
@@ -73,7 +75,7 @@ def test_health_live_contract(monkeypatch, tmp_path) -> None:
 
 
 def test_meta_signals_contract(monkeypatch, tmp_path) -> None:
-    import bist_quant.services.core_service as core_service
+    import server.services.core_service as core_service
 
     monkeypatch.setattr(
         core_service.CoreBackendService,
@@ -90,7 +92,7 @@ def test_meta_signals_contract(monkeypatch, tmp_path) -> None:
 
 
 def test_meta_system_contract(monkeypatch, tmp_path) -> None:
-    import bist_quant.services.system_service as system_service
+    import server.services.system_service as system_service
 
     monkeypatch.setattr(
         system_service.SystemService,
@@ -106,7 +108,7 @@ def test_meta_system_contract(monkeypatch, tmp_path) -> None:
 
 
 def test_screener_metadata_contract(monkeypatch, tmp_path) -> None:
-    import bist_quant.engines.stock_filter as stock_filter
+    import server.engines.stock_filter as stock_filter
 
     monkeypatch.setattr(
         stock_filter,
@@ -126,7 +128,7 @@ def test_screener_metadata_contract(monkeypatch, tmp_path) -> None:
 
 
 def test_screener_run_contract_and_validation(monkeypatch, tmp_path) -> None:
-    import bist_quant.engines.stock_filter as stock_filter
+    import server.engines.stock_filter as stock_filter
 
     monkeypatch.setattr(
         stock_filter,

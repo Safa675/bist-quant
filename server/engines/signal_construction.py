@@ -15,16 +15,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from bist_quant.engines.errors import (
+from server.engines.errors import (
     QuantEngineDataError,
     QuantEngineError,
     QuantEngineExecutionError,
     QuantEngineValidationError,
 )
-from bist_quant.engines.types import SignalBacktestResult, SignalConstructionSnapshotResult
+from server.engines.types import SignalBacktestResult, SignalConstructionSnapshotResult
 from bist_quant.runtime import RuntimePathError, RuntimePaths, resolve_runtime_paths, validate_runtime_paths
 
-LOGGER = logging.getLogger("bist_quant.engines.signal_construction")
+LOGGER = logging.getLogger("server.engines.signal_construction")
 
 try:  # noqa: E402
     import borsapy as bp

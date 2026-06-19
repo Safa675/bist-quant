@@ -12,11 +12,11 @@ def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+        "server.api", reason="server.api not available", exc_type=ImportError
     )
 
-    import bist_quant.api.main as api_main
-    from bist_quant.api.jobs import JobManager
+    import server.api.main as api_main
+    from server.api.jobs import JobManager
     from fastapi.testclient import TestClient
 
     monkeypatch.setattr(

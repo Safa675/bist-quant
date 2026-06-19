@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from bist_quant.api.schemas import ComplianceTransactionRequest, PositionLimitsRequest
+from server.api.schemas import ComplianceTransactionRequest, PositionLimitsRequest
 
 logger = logging.getLogger(__name__)
 

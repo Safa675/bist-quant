@@ -18,8 +18,8 @@ from typing import Any
 
 import pandas as pd
 
-from bist_quant.settings import ProductionSettings
-from bist_quant.security import sanitize_payload
+from server.settings import ProductionSettings
+from server.security import sanitize_payload
 
 try:
     import psutil  # type: ignore

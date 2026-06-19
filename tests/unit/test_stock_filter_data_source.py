@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bist_quant.engines import stock_filter
+from server.engines import stock_filter
 
 
 def _local_frame() -> tuple[pd.DataFrame, str, dict[str, str]]:

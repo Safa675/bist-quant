@@ -1,7 +1,7 @@
 """Service layer exports for API and orchestration modules."""
 
-from bist_quant.services.core_service import BackendPaths, CoreBackendService
-from bist_quant.services.realtime_service import (
+from server.services.core_service import BackendPaths, CoreBackendService
+from server.services.realtime_service import (
     FXRate,
     IndexData,
     MarketDataUnavailableError,
@@ -15,7 +15,7 @@ from bist_quant.services.realtime_service import (
     RealtimeServiceError,
     SymbolNotFoundError,
 )
-from bist_quant.services.system_service import (
+from server.services.system_service import (
     BackupManifest,
     ProductionSystemService,
     SystemService,

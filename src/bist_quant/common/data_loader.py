@@ -549,7 +549,14 @@ class DataLoader:
         conditions: list[str] | None = None,
     ) -> pd.DataFrame:
         """Run technical scans via ``TechnicalScannerEngine``."""
-        from bist_quant.engines.technical_scanner import TechnicalScannerEngine
+        try:
+            from server.engines.technical_scanner import TechnicalScannerEngine
+        except ImportError as exc:
+            raise ImportError(
+                "technical_scan() requires the server package. "
+                'Install with `pip install -e ".[server]"` or call '
+                "server.engines.technical_scanner.TechnicalScannerEngine directly."
+            ) from exc
 
         scanner = TechnicalScannerEngine()
         if conditions:

@@ -27,7 +27,7 @@ Supports four auth modes (configured via `ProductionSettings.auth_mode`):
 | `"either"` | Accepts API key OR JWT (tries both) |
 
 ```python
-from bist_quant.security.auth import authenticate_request
+from server.security.auth import authenticate_request
 
 ok, error_msg, ctx = authenticate_request(request, settings)
 if not ok:
@@ -53,7 +53,7 @@ if not ok:
 In-memory, thread-safe, keyed by arbitrary string (typically `f"{client_ip}:{route}"`).
 
 ```python
-from bist_quant.security.rate_limiter import InMemoryRateLimiter
+from server.security.rate_limiter import InMemoryRateLimiter
 
 limiter = InMemoryRateLimiter(max_requests=100, window_seconds=60)
 decision = limiter.check(f"{client_ip}:{path}")
@@ -72,7 +72,7 @@ if not decision.allowed:
 Recursively sanitizes any nested dict/list/string payload:
 
 ```python
-from bist_quant.security.sanitization import sanitize_payload
+from server.security.sanitization import sanitize_payload
 
 safe = sanitize_payload(user_input, max_string_length=1000)
 ```

@@ -89,7 +89,7 @@ class TestDataLoader:
 
     def test_technical_scan_delegates_to_engine(self, monkeypatch) -> None:
         """Test DataLoader.technical_scan forwards args to TechnicalScannerEngine."""
-        from bist_quant.engines import technical_scanner as technical_scanner_module
+        from server.engines import technical_scanner as technical_scanner_module
 
         captured: dict[str, object] = {}
 

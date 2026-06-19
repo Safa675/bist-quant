@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 import pandas as pd
 
-from bist_quant.api.schemas import ScreenerRunRequest
+from server.api.schemas import ScreenerRunRequest
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/screener", tags=["screener"])
 def screener_metadata() -> dict[str, Any]:
     """Return screener metadata: templates, filters, indexes, etc."""
     try:
-        from bist_quant.engines.stock_filter import get_stock_filter_metadata
+        from server.engines.stock_filter import get_stock_filter_metadata
 
         return get_stock_filter_metadata()
     except Exception as exc:
@@ -31,7 +31,7 @@ def screener_metadata() -> dict[str, Any]:
 def screener_run(payload: ScreenerRunRequest) -> dict[str, Any]:
     """Run the stock screener with the given filters."""
     try:
-        from bist_quant.engines.stock_filter import run_stock_filter
+        from server.engines.stock_filter import run_stock_filter
 
         result = run_stock_filter(payload.model_dump())
         return result
@@ -78,7 +78,7 @@ def screener_sparklines(payload: dict[str, Any]) -> dict[str, list[float]]:
                 detail="No valid symbols provided after normalization.",
             )
 
-        from bist_quant.engines.stock_filter import _SCREEN_CACHE, run_stock_filter
+        from server.engines.stock_filter import _SCREEN_CACHE, run_stock_filter
 
         close_cache = _SCREEN_CACHE.get("close_df")
         if not isinstance(close_cache, pd.DataFrame) or close_cache.empty:

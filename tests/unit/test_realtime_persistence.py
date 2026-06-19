@@ -1,4 +1,4 @@
-"""Unit tests for bist_quant.realtime and bist_quant.persistence."""
+"""Unit tests for bist_quant.realtime and server.persistence."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from bist_quant.realtime.ticks import (
     fallback_realtime_ticks,
     normalize_realtime_symbols,
 )
-from bist_quant.persistence import RunStore, RunStoreError
+from server.persistence import RunStore, RunStoreError
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import hmac
 from dataclasses import dataclass
 from typing import Any
 
-from bist_quant.settings.settings import ProductionSettings
+from server.settings import ProductionSettings
 
 try:
     import jwt as pyjwt  # type: ignore

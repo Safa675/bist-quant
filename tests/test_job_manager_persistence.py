@@ -11,7 +11,7 @@ pytest.importorskip(
     "fastapi", reason="fastapi not installed; api tests skipped", exc_type=ImportError
 )
 
-from bist_quant.api.jobs import JobManager
+from server.api.jobs import JobManager
 
 
 def test_job_manager_persists_records(tmp_path: Path) -> None:

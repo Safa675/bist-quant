@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .environment import parse_env_bool, parse_env_int, parse_env_list, parse_env_str
+from bist_quant.settings.environment import parse_env_bool, parse_env_int, parse_env_list, parse_env_str
 
 
 @dataclass(frozen=True)

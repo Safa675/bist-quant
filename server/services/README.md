@@ -22,7 +22,7 @@ The primary service used by API handlers and the Streamlit backend.
 
 **Initialization:**
 ```python
-from bist_quant.services.core_service import CoreBackendService
+from server.services.core_service import CoreBackendService
 service = CoreBackendService()  # resolves RuntimePaths automatically
 ```
 

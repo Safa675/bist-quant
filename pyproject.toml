@@ -2,17 +2,6 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build]
-exclude = [
-    "/src/bist_quant/api",
-    "/src/bist_quant/engines",
-    "/src/bist_quant/jobs",
-    "/src/bist_quant/observability",
-    "/src/bist_quant/persistence",
-    "/src/bist_quant/security",
-    "/src/bist_quant/services",
-]
-
 [project]
 name = "bist-quant"
 version = "0.3.3"
@@ -71,6 +60,13 @@ dev = [
     "build>=1.0.0",
 ]
 
+server = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.23",
+    "pydantic>=2.0",
+    "PyJWT>=2.0",
+]
+
 [project.scripts]
 bist-quant = "bist_quant.cli:main"
 
@@ -86,6 +82,7 @@ include = [
     "/CONTRIBUTING.md",
     "/docs",
     "/src/bist_quant",
+    "/server",
     "/README.md",
     "/LICENSE",
     "/mkdocs.yml",
@@ -103,6 +100,7 @@ packages = ["src/bist_quant"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "."]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
@@ -112,7 +110,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/bist_quant"]
+source = ["src/bist_quant", "server"]
 branch = true
 omit = [
     # Package init / test files
@@ -151,28 +149,9 @@ omit = [
     "src/bist_quant/data_pipeline/*",
     "src/bist_quant/fetcher/*",
 
-    # Engines — only untested boilerplate
-    "src/bist_quant/engines/__init__.py",
-    "src/bist_quant/engines/errors.py",
-    "src/bist_quant/engines/types.py",
-
-    # API package (excluded from wheel; requires fastapi, not installed in CI)
-    "src/bist_quant/api/*",
-
-    # Jobs package
-    "src/bist_quant/jobs/*",
-
-    # Observability, security, settings
-    "src/bist_quant/observability/*",
-    "src/bist_quant/security/*",
-    "src/bist_quant/settings/*",
-
     # Regime — only untested files
     "src/bist_quant/regime/__init__.py",
     "src/bist_quant/regime/simple_regime.py",
-
-    # Services
-    "src/bist_quant/services/*",
 
     # Signals — untested infrastructure and strategy files
     "src/bist_quant/signals/__init__.py",
@@ -194,11 +173,21 @@ omit = [
 
     # Large untested modules dragging down coverage
     "src/bist_quant/common/disk_cache.py",
-    "src/bist_quant/persistence/job_store.py",
     "src/bist_quant/realtime/portfolio.py",
     "src/bist_quant/fetchers/*",
-    "src/bist_quant/engines/factor_lab.py",
-    "src/bist_quant/engines/signal_construction.py",
+
+    # Server — API and large orchestration modules
+    "server/api/*",
+    "server/jobs/*",
+    "server/observability/*",
+    "server/security/*",
+    "server/engines/__init__.py",
+    "server/engines/errors.py",
+    "server/engines/types.py",
+    "server/engines/factor_lab.py",
+    "server/engines/signal_construction.py",
+    "server/persistence/job_store.py",
+    "server/services/*",
 ]
 
 [tool.coverage.report]

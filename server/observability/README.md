@@ -18,7 +18,7 @@ observability/
 ### `logging.py` — Structured Logging Configuration
 
 ```python
-from bist_quant.observability.logging import configure_logging
+from server.observability.logging import configure_logging
 
 configure_logging(
     level="INFO",
@@ -36,7 +36,7 @@ configure_logging(
 ### `metrics.py` — In-Memory Metrics
 
 ```python
-from bist_quant.observability.metrics import MetricsCollector
+from server.observability.metrics import MetricsCollector
 
 metrics = MetricsCollector()
 metrics.increment("backtest.runs", labels={"strategy": "momentum"})
@@ -54,7 +54,7 @@ Labels are encoded as sorted tuples for dict keys — always pass labels as dict
 ### `telemetry.py` — Crash Telemetry
 
 ```python
-from bist_quant.observability.telemetry import emit_crash_telemetry
+from server.observability.telemetry import emit_crash_telemetry
 
 try:
     ...

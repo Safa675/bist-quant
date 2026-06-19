@@ -17,11 +17,11 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
 except ImportError as exc:  # pragma: no cover - optional dependency
     raise ImportError(
-        "FastAPI is required for bist_quant.api. Install with `pip install -e .[api]`."
+        "FastAPI is required for server.api. Install with `pip install -e .[server]`."
     ) from exc
 
 from bist_quant.common.data_paths import get_data_paths
-from bist_quant.api.errors import (
+from server.api.errors import (
     ApiErrorEnvelope,
     job_not_found_http_exception,
     job_request_missing_http_exception,
@@ -30,8 +30,8 @@ from bist_quant.api.errors import (
     retry_unsupported_job_kind_http_exception,
     unsupported_job_kind_http_exception,
 )
-from bist_quant.api.jobs import JobManager
-from bist_quant.api.routers import (
+from server.api.jobs import JobManager
+from server.api.routers import (
     analytics_router,
     compliance_router,
     factors_router,
@@ -40,14 +40,14 @@ from bist_quant.api.routers import (
     screener_router,
     signal_construction_router,
 )
-from bist_quant.services import CoreBackendService, SystemService
-from bist_quant.services.core_service import DEFAULT_ENGINE_END_DATE, DEFAULT_ENGINE_START_DATE
+from server.services import CoreBackendService, SystemService
+from server.services.core_service import DEFAULT_ENGINE_END_DATE, DEFAULT_ENGINE_START_DATE
 
 try:
     from pydantic import BaseModel, Field, ValidationError
 except ImportError as exc:  # pragma: no cover - optional dependency
     raise ImportError(
-        "pydantic is required for bist_quant.api. Install with `pip install -e .[api]`."
+        "pydantic is required for server.api. Install with `pip install -e .[server]`."
     ) from exc
 
 
@@ -100,25 +100,25 @@ def _validate_backtest_job_request(raw: dict[str, Any]) -> BacktestRequest:
 
 
 def _validate_factor_combine_job_request(raw: dict[str, Any]) -> BaseModel:
-    from bist_quant.api.schemas import FactorCombineRequest
+    from server.api.schemas import FactorCombineRequest
 
     return _validate_job_request_model(FactorCombineRequest, raw, kind="factor_combine")
 
 
 def _validate_screener_job_request(raw: dict[str, Any]) -> BaseModel:
-    from bist_quant.api.schemas import ScreenerRunRequest
+    from server.api.schemas import ScreenerRunRequest
 
     return _validate_job_request_model(ScreenerRunRequest, raw, kind="screener")
 
 
 def _validate_analytics_job_request(raw: dict[str, Any]) -> BaseModel:
-    from bist_quant.api.schemas import AnalyticsRunRequest
+    from server.api.schemas import AnalyticsRunRequest
 
     return _validate_job_request_model(AnalyticsRunRequest, raw, kind="analytics")
 
 
 def _validate_optimize_job_request(raw: dict[str, Any]) -> BaseModel:
-    from bist_quant.api.schemas import OptimizationRunRequest
+    from server.api.schemas import OptimizationRunRequest
 
     opt_req = _validate_job_request_model(OptimizationRunRequest, raw, kind="optimize")
     parameter_space = cast(Any, getattr(opt_req, "parameter_space", None))
@@ -536,7 +536,7 @@ def create_job(payload: JobCreateRequest) -> dict[str, Any]:
             request=req.model_dump(),
         )
     elif payload.kind == "factor_combine":
-        from bist_quant.api.schemas import FactorCombineRequest
+        from server.api.schemas import FactorCombineRequest
 
         combine_req = cast(FactorCombineRequest, validated_request)
 
@@ -571,12 +571,12 @@ def create_job(payload: JobCreateRequest) -> dict[str, Any]:
             request=combine_req.model_dump(),
         )
     elif payload.kind == "screener":
-        from bist_quant.api.schemas import ScreenerRunRequest
+        from server.api.schemas import ScreenerRunRequest
 
         scr_req = cast(ScreenerRunRequest, validated_request)
 
         def _run_screener() -> dict[str, Any]:
-            from bist_quant.engines.stock_filter import run_stock_filter
+            from server.engines.stock_filter import run_stock_filter
 
             return run_stock_filter(scr_req.model_dump())
 
@@ -596,7 +596,7 @@ def create_job(payload: JobCreateRequest) -> dict[str, Any]:
             request=analytics_payload,
         )
     elif payload.kind == "optimize":
-        from bist_quant.api.schemas import OptimizationRunRequest
+        from server.api.schemas import OptimizationRunRequest
 
         opt_req = cast(OptimizationRunRequest, validated_request)
 

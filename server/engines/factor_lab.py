@@ -17,18 +17,18 @@ import numpy as np
 import pandas as pd
 
 from bist_quant.common.config_manager import DEFAULT_PORTFOLIO_OPTIONS
-from bist_quant.engines.errors import (
+from server.engines.errors import (
     QuantEngineDataError,
     QuantEngineError,
     QuantEngineExecutionError,
     QuantEngineValidationError,
 )
-from bist_quant.engines.types import FactorCatalogResult
+from server.engines.types import FactorCatalogResult
 from bist_quant.portfolio import PortfolioEngine as _BasePortfolioEngine
 from bist_quant.runtime import RuntimePathError, RuntimePaths, resolve_runtime_paths, validate_runtime_paths
 from bist_quant.signals.ta_consensus_signals import TAConsensusSignals
 
-LOGGER = logging.getLogger("bist_quant.engines.factor_lab")
+LOGGER = logging.getLogger("server.engines.factor_lab")
 RESPONSE_CACHE_TTL_SEC = 600
 _RESPONSE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 

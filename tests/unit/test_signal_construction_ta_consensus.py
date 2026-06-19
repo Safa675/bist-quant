@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from bist_quant.engines import signal_construction
+from server.engines import signal_construction
 
 
 def test_build_signal_panel_for_ta_consensus(monkeypatch) -> None:

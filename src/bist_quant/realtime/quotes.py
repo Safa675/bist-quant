@@ -50,12 +50,9 @@ def _auth_config_fingerprint(auth_config: dict[str, Any] | None) -> tuple[tuple[
 
 def _load_default_streaming_auth_config() -> dict[str, Any] | None:
     try:
-        from bist_quant.settings.settings import load_production_settings
+        from bist_quant.settings import load_streaming_auth_config
 
-        settings = load_production_settings()
-        config: dict[str, Any] = dict(settings.tradingview_auth_config)
-        config["connect_timeout"] = float(settings.tradingview_connect_timeout_seconds)
-        return config
+        return load_streaming_auth_config()
     except Exception:
         return None
 

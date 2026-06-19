@@ -44,7 +44,7 @@ def configure_logging(
     use_json = bool(json_logs) if json_format is None else bool(json_format)
 
     formatters = {
-        "json": {"()": "bist_quant.observability.logging.JsonLogFormatter"},
+        "json": {"()": "server.observability.logging.JsonLogFormatter"},
         "text": {
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
             "datefmt": "%Y-%m-%dT%H:%M:%S%z",

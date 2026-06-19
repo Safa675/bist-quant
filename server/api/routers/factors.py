@@ -7,8 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from bist_quant.api.schemas import FactorCombineRequest, FactorSnapshotRequest
-from bist_quant.services import CoreBackendService
+from server.api.schemas import FactorCombineRequest, FactorSnapshotRequest
+from server.services import CoreBackendService
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/factors", tags=["factors"])
 def factors_catalog() -> dict[str, Any]:
     """List all available signals with categories and parameter schemas."""
     try:
-        from bist_quant.engines.factor_lab import build_factor_catalog
+        from server.engines.factor_lab import build_factor_catalog
 
         result = build_factor_catalog()
         return result
@@ -48,7 +48,7 @@ def factors_detail(name: str) -> dict[str, Any]:
 def factors_snapshot(payload: FactorSnapshotRequest) -> dict[str, Any]:
     """Run cross-sectional signal scoring snapshot."""
     try:
-        from bist_quant.engines.signal_construction import run_signal_snapshot
+        from server.engines.signal_construction import run_signal_snapshot
 
         result = run_signal_snapshot(payload.model_dump())
         return result

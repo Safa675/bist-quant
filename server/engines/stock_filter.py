@@ -13,16 +13,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from bist_quant.engines.errors import (
+from server.engines.errors import (
     QuantEngineDataError,
     QuantEngineError,
     QuantEngineExecutionError,
     QuantEngineValidationError,
 )
-from bist_quant.engines.types import StockScreenerResult
+from server.engines.types import StockScreenerResult
 from bist_quant.runtime import RuntimePathError, RuntimePaths, resolve_runtime_paths, validate_runtime_paths
 
-LOGGER = logging.getLogger("bist_quant.engines.stock_filter")
+LOGGER = logging.getLogger("server.engines.stock_filter")
 
 try:  # optional dependency
     import borsapy as bp
@@ -30,7 +30,7 @@ except Exception:  # pragma: no cover
     bp = None
 
 from bist_quant.common.data_loader import DataLoader  # noqa: E402
-from bist_quant.engines.technical_scanner import TechnicalScannerEngine  # noqa: E402
+from server.engines.technical_scanner import TechnicalScannerEngine  # noqa: E402
 from bist_quant.signals.borsapy_indicators import BorsapyIndicators  # noqa: E402
 
 

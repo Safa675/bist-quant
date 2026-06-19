@@ -14,10 +14,10 @@ def _pyproject() -> dict:
     return tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
 
-def test_published_library_does_not_advertise_app_only_extras() -> None:
+def test_optional_extras_include_dev_and_server_only() -> None:
     extras = _pyproject()["project"]["optional-dependencies"]
 
-    assert sorted(extras) == ["dev"]
+    assert sorted(extras) == ["dev", "server"]
 
 
 def test_core_dependencies_include_provider_stack() -> None:

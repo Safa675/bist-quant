@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import venv
@@ -9,7 +10,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_PACKAGE_PREFIXES = [
+EXCLUDED_WHEEL_PREFIXES = [
+    "server/",
     "bist_quant/api/",
     "bist_quant/engines/",
     "bist_quant/jobs/",
@@ -55,7 +57,7 @@ def test_built_wheel_excludes_app_facing_packages(tmp_path: Path) -> None:
 
     unexpected = [
         prefix
-        for prefix in EXCLUDED_PACKAGE_PREFIXES
+        for prefix in EXCLUDED_WHEEL_PREFIXES
         if any(name.startswith(prefix) for name in names)
     ]
     assert unexpected == [], f"wheel should not contain app-facing packages: {unexpected}"
@@ -82,13 +84,21 @@ import json
 
 import bist_quant
 
+
+def _has_module(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
 result = {
     "has_get_api_app": hasattr(bist_quant, "get_api_app"),
     "has_get_quant_router": hasattr(bist_quant, "get_quant_router"),
-    "api_spec": importlib.util.find_spec("bist_quant.api") is not None,
-    "services_spec": importlib.util.find_spec("bist_quant.services") is not None,
-    "jobs_spec": importlib.util.find_spec("bist_quant.jobs") is not None,
-    "engines_spec": importlib.util.find_spec("bist_quant.engines") is not None,
+    "api_spec": _has_module("server.api"),
+    "services_spec": _has_module("server.services"),
+    "jobs_spec": _has_module("server.jobs"),
+    "engines_spec": _has_module("server.engines"),
 }
 print(json.dumps(result))
 """
@@ -99,6 +109,7 @@ print(json.dumps(result))
         capture_output=True,
         text=True,
         cwd=tmp_path,
+        env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
     )
     result = json.loads(completed.stdout)
 

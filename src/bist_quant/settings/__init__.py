@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
 
-from .settings import ProductionSettings
-from .environment import parse_env_bool, parse_env_int, parse_env_list
+from .environment import parse_env_bool, parse_env_int, parse_env_list, parse_env_str
+from .streaming import load_streaming_auth_config
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def get_output_dir(*subpaths: str) -> Path:
@@ -24,21 +24,22 @@ def get_output_dir(*subpaths: str) -> Path:
     """
     default_dir = Path(os.getcwd()) / "outputs"
     base_dir = Path(os.environ.get("BIST_QUANT_OUTPUT_DIR", default_dir))
-    
+
     if subpaths:
         target_dir = base_dir.joinpath(*subpaths)
     else:
         target_dir = base_dir
-        
+
     target_dir.mkdir(parents=True, exist_ok=True)
     return target_dir
 
 
 __all__ = [
-    "ProductionSettings",
     "parse_env_bool",
     "parse_env_int",
     "parse_env_list",
+    "parse_env_str",
+    "load_streaming_auth_config",
     "get_output_dir",
     "PROJECT_ROOT",
 ]

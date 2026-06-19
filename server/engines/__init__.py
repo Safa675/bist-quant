@@ -1,31 +1,31 @@
 from __future__ import annotations
 
-from bist_quant.engines.errors import (
+from server.engines.errors import (
     QuantEngineDataError,
     QuantEngineError,
     QuantEngineExecutionError,
     QuantEngineValidationError,
 )
-from bist_quant.engines.factor_lab import (
+from server.engines.factor_lab import (
     DEFAULT_PORTFOLIO_OPTIONS,
     PARAM_SCHEMAS,
     build_factor_catalog,
     run_factor_lab,
 )
-from bist_quant.engines.signal_construction import (
+from server.engines.signal_construction import (
     DEFAULT_INDICATORS,
     get_signal_metadata,
     run_signal_backtest,
     run_signal_snapshot,
 )
-from bist_quant.engines.stock_filter import (
+from server.engines.stock_filter import (
     FILTER_FIELD_DEFS,
     INDEX_OPTIONS,
     RECOMMENDATION_OPTIONS,
     get_stock_filter_metadata,
     run_stock_filter,
 )
-from bist_quant.engines.technical_scanner import TechnicalScannerEngine
+from server.engines.technical_scanner import TechnicalScannerEngine
 
 __all__ = [
     "DEFAULT_INDICATORS",

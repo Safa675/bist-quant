@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 
-from bist_quant.api.schemas import AnalyticsRunRequest
+from server.api.schemas import AnalyticsRunRequest
 from bist_quant.common.data_paths import get_data_paths
 
 logger = logging.getLogger(__name__)

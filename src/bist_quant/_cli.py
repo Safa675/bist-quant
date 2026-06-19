@@ -111,7 +111,7 @@ def cmd_api_serve(args) -> None:
     """Start API server."""
     import uvicorn
 
-    from .api.main import app
+    from server.api.main import app
 
     print(f"Starting BIST Quant API on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)

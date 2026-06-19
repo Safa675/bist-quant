@@ -6,15 +6,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = REPO_ROOT / "src" / "bist_quant"
-EXCLUDED_TOP_LEVEL_PACKAGES = {
-    "api",
-    "engines",
-    "jobs",
-    "observability",
-    "persistence",
-    "security",
-    "services",
-}
 
 
 def _iter_published_modules() -> list[str]:
@@ -23,8 +14,6 @@ def _iter_published_modules() -> list[str]:
     for file_path in sorted(PACKAGE_ROOT.rglob("*.py")):
         relative = file_path.relative_to(PACKAGE_ROOT)
         parts = relative.parts
-        if parts[0] in EXCLUDED_TOP_LEVEL_PACKAGES:
-            continue
         if file_path.name == "__main__.py":
             continue
 

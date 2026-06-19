@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import pytest
 
+from tests.api_route_helpers import collect_route_paths
+
 
 def test_dashboard_overview_contract() -> None:
     fastapi = pytest.importorskip("fastapi", reason="fastapi not installed", exc_type=ImportError)
     del fastapi
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+        "server.api", reason="server.api not available", exc_type=ImportError
     )
 
     from fastapi.testclient import TestClient
@@ -31,10 +33,10 @@ def test_dashboard_overview_contract() -> None:
 
 def test_dashboard_routes_registered() -> None:
     bist_quant_api = pytest.importorskip(
-        "bist_quant.api", reason="bist_quant.api not available", exc_type=ImportError
+        "server.api", reason="server.api not available", exc_type=ImportError
     )
     app = bist_quant_api.create_app()
-    paths = {route.path for route in app.routes}
+    paths = collect_route_paths(app.routes)
 
     assert "/api/dashboard/overview" in paths
     assert "/api/dashboard/regime-history" in paths

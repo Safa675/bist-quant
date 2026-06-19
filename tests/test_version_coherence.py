@@ -37,7 +37,7 @@ def test_docs_versions_match_package_version() -> None:
 
 def test_cli_and_api_versions_match_package_version() -> None:
     cli_source = _read("src/bist_quant/_cli.py")
-    api_source = _read("src/bist_quant/api/main.py")
+    api_source = _read("server/api/main.py")
 
     api_match = re.search(r'FastAPI\(title="BIST Quant API", version=([^\)]+)\)', api_source)
 
