@@ -66,7 +66,7 @@ Every folder under `src/bist_quant/` has a `README.md` with file-level API refer
 | Clients | [src/bist_quant/clients/README.md](../src/bist_quant/clients/README.md) |
 | Common | [src/bist_quant/common/README.md](../src/bist_quant/common/README.md) |
 | Data Pipeline | [src/bist_quant/data_pipeline/README.md](../src/bist_quant/data_pipeline/README.md) |
-| Engines | [src/bist_quant/engines/README.md](../src/bist_quant/engines/README.md) |
+| Engines | [server/engines/README.md](../server/engines/README.md) |
 | Regime | [src/bist_quant/regime/README.md](../src/bist_quant/regime/README.md) |
 | Signals | [src/bist_quant/signals/README.md](../src/bist_quant/signals/README.md) |
 

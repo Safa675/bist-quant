@@ -70,14 +70,9 @@ Minimum recommended: `slippage_bps=5.0` for BIST.
 ## Walk-Forward Analysis
 
 ```python
-from bist_quant.engines.analytics_engine import AnalyticsEngine
+from bist_quant.analytics.core_metrics import build_walk_forward_analysis
 
-aengine = AnalyticsEngine(loader=loader)
-wf = aengine.walk_forward_analysis(
-    strategy="momentum",
-    n_splits=5,
-    train_pct=0.7,
-)
+wf = build_walk_forward_analysis(returns=result.returns, splits=5)
 print(wf)
 ```
 
