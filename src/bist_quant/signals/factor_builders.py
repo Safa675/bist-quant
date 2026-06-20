@@ -186,6 +186,7 @@ def _build_metric_panel(
             series = metrics_df.loc[ticker, metric_name]
             if isinstance(series, pd.DataFrame):
                 series = series.iloc[:, 0]
+            series = pd.to_numeric(series, errors="coerce")
             series = series.sort_index()
             series = series[~series.index.duplicated(keep="last")]
             series.index = pd.to_datetime(series.index)

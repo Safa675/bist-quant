@@ -97,6 +97,8 @@ def calculate_value_for_ticker(
         return None
     
     # Get prices aligned to fundamental dates
+    if ticker not in close_df.columns:
+        return None
     prices_aligned = close_df[ticker].reindex(combined.index, method='ffill')
     shares_aligned = shares.reindex(combined.index, method='ffill')
     

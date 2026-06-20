@@ -470,7 +470,8 @@ def build_size_rotation_signals(
     if pd.isna(latest_regime):
         latest_regime = "unknown"
     latest_z = size_regime['z_score'].iloc[-1] if not size_regime.empty else 0
-    logger.info(f"  Current regime: {latest_regime.upper()} (z-score: {latest_z:.2f})")
+    regime_str = str(latest_regime).upper() if isinstance(latest_regime, str) else 'UNKNOWN'
+    logger.info(f"  Current regime: {regime_str} (z-score: {latest_z:.2f})")
 
     # Regime distribution
     if not size_regime.empty:

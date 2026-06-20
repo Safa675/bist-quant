@@ -113,7 +113,8 @@ def build_size_rotation_momentum_signals(
     # Show current regime
     latest_regime = size_regime['regime'].iloc[-1] if not size_regime.empty else 'unknown'
     latest_z = size_regime['z_score'].iloc[-1] if not size_regime.empty else 0
-    logger.info(f"  Current regime: {latest_regime.upper()} (z-score: {latest_z:.2f})")
+    regime_str = str(latest_regime).upper() if isinstance(latest_regime, str) else 'UNKNOWN'
+    logger.info(f"  Current regime: {regime_str} (z-score: {latest_z:.2f})")
 
     # Calculate momentum
     logger.info("  Calculating momentum...")
