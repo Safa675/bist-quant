@@ -1,6 +1,6 @@
 import pandas as pd
 
-from bist_quant.fetcher.update_prices import _normalize_borsapy_xau
+from bist_quant.clients.update_prices import _normalize_borsapy_xau
 
 
 def test_normalize_borsapy_xau_handles_try_quoted_switch() -> None:
