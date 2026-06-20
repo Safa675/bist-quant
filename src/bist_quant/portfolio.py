@@ -339,11 +339,21 @@ class PortfolioEngine:
 
     def load_all_data(self, use_cache: bool = True):
         """Load all required datasets and cache prepared data panels."""
+        logger.info("=" * 70)
+        logger.info("Loading market data...")
+        logger.info("  (First run downloads price history — this can take 60-90 minutes")
+        logger.info("   for the full XUTUM universe. Subsequent runs use cached data.)")
+        logger.info("=" * 70)
         loaded_data = self.data_manager.load_all(
             use_cache=use_cache,
             require_regime=bool(self.options.get("use_regime_filter", True)),
         )
         self._apply_loaded_data(loaded_data)
+        logger.info(
+            "✅ Data loaded: %d days × %d tickers",
+            len(self.close_df.index),
+            len(self.close_df.columns),
+        )
 
     def _build_market_cap_panel(
         self,
@@ -1132,14 +1142,28 @@ class PortfolioEngine:
         )
 
     def run_all_factors(self):
-        """Run all enabled factors."""
+        """Run all enabled factors. Continues past individual signal failures."""
         results = {}
+        failed: list[str] = []
 
         for factor_name, config in self.signal_configs.items():
-            if config.get("enabled", True):
-                results[factor_name] = self.run_factor(factor_name)
-            else:
+            if not config.get("enabled", True):
                 logger.warning(f"Skipping {factor_name} (disabled in config)")
+                continue
+            try:
+                results[factor_name] = self.run_factor(factor_name)
+            except Exception as exc:
+                logger.error(f"❌ {factor_name} FAILED: {exc}")
+                failed.append(factor_name)
+                continue
+
+        if failed:
+            logger.warning(
+                "\n⚠️  %d/%d signals failed: %s",
+                len(failed),
+                len(self.signal_configs),
+                ", ".join(failed),
+            )
 
         if self.factor_returns:
             self.save_correlation_matrix()
@@ -1278,6 +1302,16 @@ def main():
     )
 
     engine = PortfolioEngine(data_dir, regime_model_dir, args.start_date, args.end_date)
+
+    # Check if regime model exists; disable regime filter gracefully if not.
+    regime_exists = any(p.exists() and any(p.iterdir()) for p in [regime_model_dir] if p.exists())
+    if not regime_exists:
+        logger.warning(
+            "No regime model found — disabling regime filter. "
+            "Run the regime pipeline to enable regime-aware allocation."
+        )
+        engine.options["use_regime_filter"] = False
+
     engine.load_all_data()
 
     if signal_to_run == "all":

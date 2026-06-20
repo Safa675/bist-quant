@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 
+from bist_quant.common.data_paths import get_data_paths
 from bist_quant.common.enums import RegimeLabel
 
 logger = logging.getLogger(__name__)
@@ -166,9 +167,7 @@ class DataManager:
 
     def _ensure_consolidated_panel(self) -> Path | None:
         """Build or refresh the consolidated prices panel if per-ticker files exist."""
-        from bist_quant.common.data_paths import get_data_paths
-
-        _paths = get_data_paths()
+        _paths = getattr(self.loader, "paths", None) or get_data_paths()
         prices_dir = _paths.borsapy_cache_dir / "prices"
         if not prices_dir.exists() or not any(prices_dir.glob("*_1d.parquet")):
             return None
@@ -188,9 +187,10 @@ class DataManager:
 
         start_time = time.time()
 
-        from bist_quant.common.data_paths import get_data_paths
-
-        _paths = get_data_paths()
+        # Use the loader's paths (respects the data_dir passed to PortfolioEngine)
+        # rather than the global default, so gold/usdtry/xu100 files are found
+        # in the same directory as the price data.
+        _paths = getattr(self.loader, "paths", None) or get_data_paths()
 
         # ── Ensure consolidated panel is fresh ───────────────────────────
         panel_path = self._ensure_consolidated_panel()
@@ -198,14 +198,15 @@ class DataManager:
         # ── Load prices ──────────────────────────────────────────────────
         # If a fresh consolidated panel exists, load it directly for speed.
         # Otherwise fall back to the DataLoader's normal path.
-        if panel_path is not None and panel_path.exists() and panel_path.stat().st_size > 100_000:
+        if panel_path is not None and panel_path.exists() and panel_path.stat().st_size > 1_000:
             logger.info("  ⚡ Loading from consolidated prices panel...")
             prices = pd.read_parquet(panel_path)
             if "Date" in prices.columns:
                 prices["Date"] = pd.to_datetime(prices["Date"], errors="coerce").dt.floor("D")
             # Cache inside DataLoader so other methods can reuse it
-            if self.loader.price_loader.prices is None:
-                self.loader.price_loader.prices = prices
+            price_loader = getattr(self.loader, "price_loader", None)
+            if price_loader is not None and getattr(price_loader, "prices", None) is None:
+                price_loader.prices = prices
             logger.info(
                 "  ✅ Loaded %d price records from consolidated panel",
                 len(prices),

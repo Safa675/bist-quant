@@ -114,7 +114,14 @@ class DataLoader:
         resolved_macro_events = (
             Path(macro_events_path)
             if macro_events_path is not None
-            else (PROJECT_ROOT / "src" / "bist_quant" / "data_pipeline" / "fetcher_scripts" / "macro_events.py")
+            else (
+                PROJECT_ROOT
+                / "src"
+                / "bist_quant"
+                / "data_pipeline"
+                / "fetcher_scripts"
+                / "macro_events.py"
+            )
         )
         if not resolved_macro_events.exists():
             resolved_macro_events = FETCHER_DIR / "tcmb_data_fetcher.py"
