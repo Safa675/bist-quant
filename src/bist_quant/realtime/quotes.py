@@ -8,38 +8,15 @@ Uses borsapy for live data from Borsa Istanbul.
 from __future__ import annotations
 
 import logging
-import math
-from datetime import datetime, timezone
 from typing import Any
 
+from ._utils import normalize_symbol, to_float, utc_iso_now as _utc_iso_now
 from .streaming import StreamingProvider
 
 logger = logging.getLogger(__name__)
 
 _STREAMING_PROVIDER: StreamingProvider | None = None
 _STREAMING_PROVIDER_FINGERPRINT: tuple[tuple[str, str], ...] | None = None
-
-
-def normalize_symbol(symbol: str) -> str:
-    """Normalize a ticker symbol (strip, uppercase, remove exchange suffix)."""
-    return str(symbol or "").strip().upper().split(".")[0]
-
-
-def to_float(value: Any) -> float | None:
-    """Safely parse a value to float, returning None on failure or non-finite."""
-    try:
-        if value is None:
-            return None
-        parsed = float(value)
-        if not math.isfinite(parsed):
-            return None
-        return parsed
-    except Exception:
-        return None
-
-
-def _utc_iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _auth_config_fingerprint(auth_config: dict[str, Any] | None) -> tuple[tuple[str, str], ...]:

@@ -10,32 +10,15 @@ This provider wraps borsapy's persistent stream API with:
 from __future__ import annotations
 
 import logging
-import math
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from bist_quant.realtime._utils import normalize_symbol as _normalize_symbol
+from bist_quant.realtime._utils import to_float as _to_float
+from bist_quant.realtime._utils import utc_iso_now as _utc_iso_now
+
 logger = logging.getLogger(__name__)
-
-
-def _normalize_symbol(symbol: str) -> str:
-    return str(symbol or "").strip().upper().split(".")[0]
-
-
-def _to_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        parsed = float(value)
-        if not math.isfinite(parsed):
-            return None
-        return parsed
-    except Exception:
-        return None
-
-
-def _utc_iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _auth_token_from_config(auth_config: dict[str, Any]) -> str | None:
