@@ -26,6 +26,15 @@ from bist_quant.common.utils import (
     sum_ttm,
     validate_signal_panel_schema,
 )
+from bist_quant.signals.fundamental_keys import (
+    CAPEX_KEYS,
+    CASH_KEYS,
+    EBITDA_KEYS,
+    NET_INCOME_KEYS,
+    OPERATING_CF_KEYS as OPERATING_CASH_FLOW_KEYS,
+    REVENUE_KEYS,
+    TOTAL_DEBT_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,46 +42,6 @@ logger = logging.getLogger(__name__)
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
 CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"
-
-NET_INCOME_KEYS = (
-    "DÖNEM KARI (ZARARI)",
-    "Dönem Net Karı (Zararı)",
-    "Net Dönem Karı (Zararı)",
-    "Ana Ortaklık Payları",
-    "ANA ORTAKLIK PAYLARI",
-    "Dönem Karı (Zararı)",
-    "SÜRDÜRÜLEN FAALİYETLER DÖNEM KARI/ZARARI",
-)
-REVENUE_KEYS = (
-    "Satış Gelirleri",
-    "SATIŞ GELİRLERİ",
-)
-EBITDA_KEYS = (
-    "FAVÖK",
-    "Faiz Amortisman ve Vergi Öncesi Kar",
-)
-OPERATING_CASH_FLOW_KEYS = (
-    "Faaliyetlerden Elde Edilen Nakit Akışları",
-    "İşletme Faaliyetlerinden Nakit Akışları",
-    "İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI",
-    " İşletme Faaliyetlerinden Kaynaklanan Net Nakit",
-)
-CAPEX_KEYS = (
-    "Maddi ve Maddi Olmayan Duran Varlıkların Alımından Kaynaklanan Nakit Çıkışları",
-    "SABİT SERMAYE YATIRIMLARI",
-    " Sabit Sermaye Yatırımları",
-)
-TOTAL_DEBT_KEYS = (
-    "Finansal Borçlar",
-    "Kısa Vadeli Finansal Borçlar",
-    "Uzun Vadeli Finansal Borçlar",
-    "FİNANSAL BORÇLAR",
-)
-CASH_KEYS = (
-    "Nakit ve Nakit Benzerleri",
-    "NAKİT VE NAKİT BENZERLERİ",
-    "  Nakit ve Nakit Benzerleri",
-)
 
 
 def calculate_value_metrics_for_ticker(

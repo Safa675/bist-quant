@@ -41,10 +41,9 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    CompositeFactorSignal,
     FactorData,
     FactorParams,
-    cross_sectional_zscore,
-    combine_components_zscore,
 )
 
 
@@ -59,7 +58,7 @@ class TradingIntensityParams:
     annualize_turnover: bool = True
 
 
-class TradingIntensitySignal(FactorSignal):
+class TradingIntensitySignal(CompositeFactorSignal):
     """
     Trading Intensity factor: measures level of trading activity.
 
@@ -115,18 +114,12 @@ class TradingIntensitySignal(FactorSignal):
         relative_volume = (volume / avg_volume.replace(0, np.nan)).rolling(
             ti_params.relative_volume_smooth_days, min_periods=21
         ).mean()
-        relative_volume = relative_volume.replace([np.inf, -np.inf], np.nan)
-
-        if relative_volume.notna().sum().sum() > 100:
-            panels["relative_volume"] = relative_volume
+        panels["relative_volume"] = relative_volume.replace([np.inf, -np.inf], np.nan)
 
         # 2. Volume Trend = Short-term Avg / Long-term Avg - 1
         short_vol = volume.rolling(ti_params.volume_trend_short_days, min_periods=10).mean()
         long_vol = volume.rolling(ti_params.volume_trend_long_days, min_periods=42).mean()
-        volume_trend = (short_vol / long_vol.replace(0, np.nan) - 1.0).replace([np.inf, -np.inf], np.nan)
-
-        if volume_trend.notna().sum().sum() > 100:
-            panels["volume_trend"] = volume_trend
+        panels["volume_trend"] = (short_vol / long_vol.replace(0, np.nan) - 1.0).replace([np.inf, -np.inf], np.nan)
 
         # 3. Turnover Velocity = (Volume / Shares Outstanding) * 252
         if data.shares_outstanding is not None:
@@ -139,27 +132,11 @@ class TradingIntensitySignal(FactorSignal):
             else:
                 turnover_velocity = turnover_smooth
 
-            turnover_velocity = turnover_velocity.replace([np.inf, -np.inf], np.nan)
+            panels["turnover_velocity"] = turnover_velocity.replace([np.inf, -np.inf], np.nan)
 
-            if turnover_velocity.notna().sum().sum() > 100:
-                panels["turnover_velocity"] = turnover_velocity
-
-        # Combine components
-        components = []
-        for name, panel in panels.items():
-            components.append((name, cross_sectional_zscore(panel)))
-
-        if not components:
-            return pd.DataFrame(np.nan, index=dates, columns=tickers), {"warning": "No components available"}
-
-        raw_scores = combine_components_zscore(components, dates, tickers)
-
-        metadata = {
-            "components": [c[0] for c in components],
-            "relative_volume_baseline": ti_params.relative_volume_baseline_days,
-            "volume_trend_windows": (ti_params.volume_trend_short_days, ti_params.volume_trend_long_days),
-            "coverage_pct": float(raw_scores.notna().sum().sum()) / max(raw_scores.size, 1) * 100,
-        }
+        raw_scores, metadata = self._combine_component_panels(panels, dates, tickers)
+        metadata["relative_volume_baseline"] = ti_params.relative_volume_baseline_days
+        metadata["volume_trend_windows"] = (ti_params.volume_trend_short_days, ti_params.volume_trend_long_days)
 
         return raw_scores, metadata
 

@@ -32,6 +32,13 @@ from bist_quant.common.utils import (
     pick_row,
     pick_row_from_sheet,
 )
+from bist_quant.signals.fundamental_keys import (
+    BOOK_VALUE_KEYS,
+    GROSS_PROFIT_KEYS,
+    NET_INCOME_KEYS,
+    OPERATING_INCOME_KEYS,
+    TOTAL_ASSETS_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,32 +46,6 @@ logger = logging.getLogger(__name__)
 # Fundamental data keys
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
-
-# Value metrics
-NET_INCOME_KEYS = (
-    "Dönem Karı (Zararı)",
-    "Net Dönem Karı (Zararı)",
-    "    Dönem Karı (Zararı)",
-)
-BOOK_VALUE_KEYS = (
-    "Toplam Özkaynaklar",
-    "    Toplam Özkaynaklar",
-    "Ana Ortaklığa Ait Özkaynaklar",
-)
-
-# Profitability metrics
-OPERATING_INCOME_KEYS = (
-    "Faaliyet Karı (Zararı)",
-    "Finansman Geliri (Gideri) Öncesi Faaliyet Karı (Zararı)",
-)
-GROSS_PROFIT_KEYS = (
-    "Brüt Kar (Zarar)",
-    "Ticari Faaliyetlerden Brüt Kar (Zarar)",
-)
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "    Toplam Varlıklar",
-)
 
 
 def calculate_value_for_ticker(

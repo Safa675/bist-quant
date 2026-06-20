@@ -41,6 +41,7 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    FundamentalFactorSignal,
     FactorData,
     FactorParams,
     cross_sectional_zscore,
@@ -56,7 +57,7 @@ class ProfitabilityParams:
     reporting_lag_days: int = 45
 
 
-class ProfitabilitySignal(FactorSignal):
+class ProfitabilitySignal(FundamentalFactorSignal):
     """
     Profitability factor: favors profitable companies.
 
@@ -115,6 +116,9 @@ class ProfitabilitySignal(FactorSignal):
 
         return raw_scores, metadata
 
+    # Only the income statement is needed for margin computation.
+    _FUNDAMENTAL_SHEETS = ("income",)
+
     def _build_margin_panel(
         self,
         data: FactorData,
@@ -125,42 +129,19 @@ class ProfitabilitySignal(FactorSignal):
         tickers = data.tickers
         margin_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
 
-        if data.fundamentals_parquet is None and data.data_loader is None:
-            return margin_panel
-
-        # Load from data_loader if available
-        if data.data_loader is not None:
-            try:
-                fundamentals_parquet = data.data_loader.load_fundamentals_parquet()
-            except Exception:
-                fundamentals_parquet = None
-        else:
-            fundamentals_parquet = data.fundamentals_parquet
-
-        if fundamentals_parquet is None:
-            return margin_panel
-
-        # Import utils for parsing
         try:
             from ..factor_builders import (
-                INCOME_SHEET,
                 REVENUE_KEYS,
                 OPERATING_INCOME_KEYS,
                 GROSS_PROFIT_KEYS,
             )
-            from ...common.utils import (
-                get_consolidated_sheet,
-                pick_row_from_sheet,
-                coerce_quarter_cols,
-                sum_ttm,
-                apply_lag,
-            )
         except ImportError:
             return margin_panel
 
-        for ticker in tickers:
+        for ticker, inc, _bs, _cf, helpers in self.iter_ticker_fundamentals(data):
             try:
-                inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
+                _, pick_row_from_sheet, coerce_quarter_cols, sum_ttm, apply_lag, _ = helpers
+
                 if inc.empty:
                     continue
 

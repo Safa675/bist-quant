@@ -28,7 +28,7 @@ signals/
 ├── debug_utils.py                # Signal debugging helpers
 ├── signal_exporter.py            # Export signal DataFrames to CSV
 ├── borsapy_indicators.py         # borsapy-native indicator wrappers
-├── five_factor_pipeline.py       # Five-factor model pipeline
+├── five_factor_rotation_signals.py  # Five-factor rotation signal (multi-factor model)
 │
 └── standalone_factors/           # Independent factor implementations (see sub-README)
     ├── base.py                   # FactorSignal ABC + NormalizationMethod + SelectionMethod

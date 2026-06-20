@@ -26,6 +26,11 @@ from bist_quant.common.utils import (
     sum_ttm,
     validate_signal_panel_schema,
 )
+from bist_quant.signals.fundamental_keys import (
+    CASH_KEYS,
+    REVENUE_KEYS,
+    TOTAL_DEBT_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +38,6 @@ logger = logging.getLogger(__name__)
 # Fundamental data keys
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
-
-REVENUE_KEYS = (
-    "Satış Gelirleri",
-    "Toplam Hasılat",
-    "Hasılat",
-    "Net Satışlar",
-)
-TOTAL_DEBT_KEYS = (
-    "Finansal Borçlar",
-)
-CASH_KEYS = (
-    "Nakit ve Nakit Benzerleri",
-)
 
 
 def calculate_size_metrics_for_ticker(

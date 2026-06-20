@@ -41,6 +41,7 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    FundamentalFactorSignal,
     FactorData,
     FactorParams,
     cross_sectional_zscore,
@@ -57,7 +58,7 @@ class DefensiveParams:
     stability_clip: Tuple[float, float] = (-10.0, 10.0)
 
 
-class DefensiveSignal(FactorSignal):
+class DefensiveSignal(FundamentalFactorSignal):
     """
     Defensive factor: favors stable, low-beta stocks.
 
@@ -143,35 +144,15 @@ class DefensiveSignal(FactorSignal):
 
         stability_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
 
-        if data.data_loader is None:
-            return stability_panel
-
         try:
-            fundamentals_parquet = data.data_loader.load_fundamentals_parquet()
-        except Exception:
-            return stability_panel
-
-        if fundamentals_parquet is None:
-            return stability_panel
-
-        try:
-            from ..factor_builders import (
-                INCOME_SHEET,
-                NET_INCOME_KEYS,
-            )
-            from ...common.utils import (
-                get_consolidated_sheet,
-                pick_row_from_sheet,
-                coerce_quarter_cols,
-                sum_ttm,
-                apply_lag,
-            )
+            from ..factor_builders import NET_INCOME_KEYS
         except ImportError:
             return stability_panel
 
-        for ticker in tickers:
+        for ticker, inc, _bs, _cf, helpers in self.iter_ticker_fundamentals(data):
             try:
-                inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
+                _, pick_row_from_sheet, coerce_quarter_cols, sum_ttm, apply_lag, _ = helpers
+
                 if inc.empty:
                     continue
 

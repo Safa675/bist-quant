@@ -40,6 +40,8 @@ from .base import (
     SignalOutput,
     NormalizationMethod,
     SelectionMethod,
+    FundamentalFactorSignal,
+    CompositeFactorSignal,
 )
 
 from .size_signal import SizeSignal
@@ -64,6 +66,8 @@ __all__ = [
     "SignalOutput",
     "NormalizationMethod",
     "SelectionMethod",
+    "FundamentalFactorSignal",
+    "CompositeFactorSignal",
     # Factor signals
     "SizeSignal",
     "ValueSignal",

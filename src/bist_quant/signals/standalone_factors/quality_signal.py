@@ -44,6 +44,7 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    FundamentalFactorSignal,
     FactorData,
     FactorParams,
     cross_sectional_zscore,
@@ -65,7 +66,7 @@ class QualityParams:
     reporting_lag_days: int = 45
 
 
-class QualitySignal(FactorSignal):
+class QualitySignal(FundamentalFactorSignal):
     """
     Quality factor: favors high-quality companies.
 
@@ -164,23 +165,9 @@ class QualitySignal(FactorSignal):
             "piotroski": pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float),
         }
 
-        if data.data_loader is None:
-            return panels
-
-        try:
-            fundamentals_parquet = data.data_loader.load_fundamentals_parquet()
-        except Exception:
-            return panels
-
-        if fundamentals_parquet is None:
-            return panels
-
-        # Import utils
+        # Lazy-import the fundamental keys needed by this factor.
         try:
             from ..factor_builders import (
-                INCOME_SHEET,
-                BALANCE_SHEET,
-                CASH_FLOW_SHEET,
                 NET_INCOME_KEYS,
                 TOTAL_ASSETS_KEYS,
                 TOTAL_EQUITY_KEYS,
@@ -190,21 +177,12 @@ class QualitySignal(FactorSignal):
                 LONG_TERM_DEBT_KEYS,
                 CFO_KEYS,
             )
-            from ...common.utils import (
-                get_consolidated_sheet,
-                pick_row_from_sheet,
-                coerce_quarter_cols,
-                sum_ttm,
-                apply_lag,
-            )
         except ImportError:
             return panels
 
-        for ticker in tickers:
+        for ticker, inc, bs, cf, helpers in self.iter_ticker_fundamentals(data):
             try:
-                inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
-                bs = get_consolidated_sheet(fundamentals_parquet, ticker, BALANCE_SHEET)
-                cf = get_consolidated_sheet(fundamentals_parquet, ticker, CASH_FLOW_SHEET)
+                _, pick_row_from_sheet, coerce_quarter_cols, sum_ttm, apply_lag, _ = helpers
 
                 if inc.empty or bs.empty:
                     continue

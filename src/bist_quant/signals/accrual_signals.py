@@ -34,6 +34,15 @@ from bist_quant.common.utils import (
     pick_row,
     pick_row_from_sheet,
 )
+from bist_quant.signals.fundamental_keys import (
+    CASH_KEYS,
+    CURRENT_ASSETS_KEYS,
+    CURRENT_DEBT_KEYS,
+    CURRENT_LIABILITIES_KEYS,
+    DEPRECIATION_KEYS,
+    INCOME_TAX_PAYABLE_KEYS,
+    TOTAL_ASSETS_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,41 +50,6 @@ logger = logging.getLogger(__name__)
 # Fundamental data keys
 BALANCE_SHEET = "Bilanço"
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
-
-# Balance Sheet Keys
-CURRENT_ASSETS_KEYS = (
-    "Dönen Varlıklar",
-    "Toplam Dönen Varlıklar",
-)
-CASH_KEYS = (
-    "Nakit ve Nakit Benzerleri",
-    "Nakit ve Nakit Benzeri Varlıklar",
-)
-CURRENT_LIABILITIES_KEYS = (
-    "Kısa Vadeli Yükümlülükler",
-    "Toplam Kısa Vadeli Yükümlülükler",
-)
-CURRENT_DEBT_KEYS = (
-    "Finansal Borçlar",
-    "Kısa Vadeli Finansal Borçlar",
-    "Kısa Vadeli Borçlanmalar",
-)
-INCOME_TAX_PAYABLE_KEYS = (
-    "Dönem Karı Vergi Yükümlülüğü",
-    "Cari Dönem Vergisi ile İlgili Yükümlülükler",
-    "Kısa Vadeli Borç Karşılıkları",
-)
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
-
-# Income Statement Keys
-DEPRECIATION_KEYS = (
-    "Amortisman ve İtfa Giderleri",
-    "Amortisman ve İtfa Gideri",
-    "Amortisman Giderleri",
-)
 
 
 def calculate_accruals_for_ticker(

@@ -320,6 +320,156 @@ class FactorSignal(ABC):
 
 
 # =============================================================================
+# INTERMEDIATE MIXINS
+# =============================================================================
+
+class FundamentalFactorSignal(FactorSignal):
+    """Mixin for factors that load consolidated fundamental data per ticker.
+
+    Eliminates the boilerplate that was duplicated across 6+ factor classes:
+    resolving ``fundamentals_parquet`` (from ``data_loader`` or ``FactorData``),
+    the ``try: from ..factor_builders ... except ImportError`` import block,
+    and the ``for ticker in tickers: try/except continue`` skeleton.
+
+    Subclasses implement ``_compute_ticker_metric(inc, bs, cf, ticker, dates)``
+    to return a ``pd.Series`` (the lagged-ready per-ticker metric), or ``None``
+    to skip the ticker.
+    """
+
+    #: Sheets this factor needs. Subclasses override to load fewer sheets.
+    _FUNDAMENTAL_SHEETS: tuple[str, ...] = ("income", "balance", "cash_flow")
+
+    def _load_fundamentals_parquet(self, data: FactorData) -> Optional[pd.DataFrame]:
+        """Resolve the consolidated fundamentals parquet, or ``None``."""
+        if data.data_loader is not None:
+            try:
+                return data.data_loader.load_fundamentals_parquet()
+            except Exception:
+                return None
+        return data.fundamentals_parquet
+
+    def _get_sheet_helpers(self):
+        """Import the fundamental-parsing helpers lazily.
+
+        Returns ``(get_consolidated_sheet, pick_row_from_sheet, coerce_quarter_cols,
+        sum_ttm, apply_lag, sheet_names)`` or ``None`` if imports fail.
+        """
+        try:
+            from ..factor_builders import (
+                INCOME_SHEET,
+                BALANCE_SHEET,
+                CASH_FLOW_SHEET,
+            )
+            from ...common.utils import (
+                get_consolidated_sheet,
+                pick_row_from_sheet,
+                coerce_quarter_cols,
+                sum_ttm,
+                apply_lag,
+            )
+        except ImportError:
+            return None
+        sheet_names = {
+            "income": INCOME_SHEET,
+            "balance": BALANCE_SHEET,
+            "cash_flow": CASH_FLOW_SHEET,
+        }
+        return (get_consolidated_sheet, pick_row_from_sheet, coerce_quarter_cols,
+                sum_ttm, apply_lag, sheet_names)
+
+    def iter_ticker_fundamentals(
+        self,
+        data: FactorData,
+    ):
+        r"""Yield ``(ticker, inc, bs, cf, helpers)`` for each ticker with data.
+
+        ``helpers`` is the tuple returned by ``_get_sheet_helpers``. Sheets not
+        in ``_FUNDAMENTAL_SHEETS`` are yielded as empty ``DataFrame``\s.
+        ``inc``/``bs``/``cf`` are always present (possibly empty); callers
+        should check ``.empty`` before use.
+        """
+        helpers = self._get_sheet_helpers()
+        if helpers is None:
+            return
+        get_sheet, _, _, _, _, sheet_names = helpers
+
+        fundamentals_parquet = self._load_fundamentals_parquet(data)
+        if fundamentals_parquet is None:
+            return
+
+        sheets_needed = self._FUNDAMENTAL_SHEETS
+        for ticker in data.tickers:
+            try:
+                sheets: Dict[str, pd.DataFrame] = {}
+                for sheet_key in ("income", "balance", "cash_flow"):
+                    if sheet_key in sheets_needed:
+                        sheets[sheet_key] = get_sheet(
+                            fundamentals_parquet, ticker, sheet_names[sheet_key]
+                        )
+                    else:
+                        sheets[sheet_key] = pd.DataFrame()
+
+                if sheets["income"].empty and sheets["balance"].empty and sheets["cash_flow"].empty:
+                    continue
+
+                yield ticker, sheets["income"], sheets["balance"], sheets["cash_flow"], helpers
+            except Exception:
+                continue
+
+
+class CompositeFactorSignal(FactorSignal):
+    """Mixin for factors that zscore-combine multiple sub-panels.
+
+    Eliminates the boilerplate that was duplicated across 7+ factor classes:
+    pre-allocating the components list, the ``notna().sum().sum() > threshold``
+    coverage gate, the ``cross_sectional_zscore`` call with optional sign
+    inversion, the empty-components fallback, and the standard metadata dict.
+
+    Subclasses implement ``_build_component_panels(data, params)`` returning a
+    ``dict[str, pd.DataFrame]`` of named sub-panels, and optionally set
+    ``_component_coverage_threshold`` and ``_invert_components``.
+    """
+
+    #: Minimum non-NaN data points for a component to be included.
+    _component_coverage_threshold: int = 100
+
+    #: Component names whose z-score should be negated (lower-is-better).
+    _invert_components: set[str] = set()
+
+    def _combine_component_panels(
+        self,
+        panels: Dict[str, pd.DataFrame],
+        dates: pd.DatetimeIndex,
+        tickers: pd.Index,
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """Zscore-combine named sub-panels into a single raw-score panel."""
+        components = []
+        for name, panel in panels.items():
+            if panel is None:
+                continue
+            if panel.notna().sum().sum() <= self._component_coverage_threshold:
+                continue
+            z = cross_sectional_zscore(panel)
+            if name in self._invert_components:
+                z = -z
+            components.append((name, z))
+
+        if not components:
+            return (
+                pd.DataFrame(np.nan, index=dates, columns=tickers),
+                {"warning": "No valid components", "components": []},
+            )
+
+        raw_scores = combine_components_zscore(components, dates, tickers)
+
+        metadata = {
+            "components": [c[0] for c in components],
+            "coverage_pct": float(raw_scores.notna().sum().sum()) / max(raw_scores.size, 1) * 100,
+        }
+        return raw_scores, metadata
+
+
+# =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 

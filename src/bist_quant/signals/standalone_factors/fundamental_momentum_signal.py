@@ -40,6 +40,7 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    FundamentalFactorSignal,
     FactorData,
     FactorParams,
     cross_sectional_zscore,
@@ -55,7 +56,7 @@ class FundamentalMomentumParams:
     reporting_lag_days: int = 45
 
 
-class FundamentalMomentumSignal(FactorSignal):
+class FundamentalMomentumSignal(FundamentalFactorSignal):
     """
     Fundamental Momentum factor: captures improving fundamentals.
 
@@ -122,6 +123,9 @@ class FundamentalMomentumSignal(FactorSignal):
 
         return raw_scores, metadata
 
+    # Only the income statement is needed for fundamental momentum.
+    _FUNDAMENTAL_SHEETS = ("income",)
+
     def _build_fundmom_panels(
         self,
         data: FactorData,
@@ -136,37 +140,18 @@ class FundamentalMomentumSignal(FactorSignal):
             "sales_accel": pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float),
         }
 
-        if data.data_loader is None:
-            return panels
-
-        try:
-            fundamentals_parquet = data.data_loader.load_fundamentals_parquet()
-        except Exception:
-            return panels
-
-        if fundamentals_parquet is None:
-            return panels
-
-        # Import utils
         try:
             from ..factor_builders import (
-                INCOME_SHEET,
                 REVENUE_KEYS,
                 OPERATING_INCOME_KEYS,
-            )
-            from ...common.utils import (
-                get_consolidated_sheet,
-                pick_row_from_sheet,
-                coerce_quarter_cols,
-                sum_ttm,
-                apply_lag,
             )
         except ImportError:
             return panels
 
-        for ticker in tickers:
+        for ticker, inc, _bs, _cf, helpers in self.iter_ticker_fundamentals(data):
             try:
-                inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
+                _, pick_row_from_sheet, coerce_quarter_cols, sum_ttm, apply_lag, _ = helpers
+
                 if inc.empty:
                     continue
 

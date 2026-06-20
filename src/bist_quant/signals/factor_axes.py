@@ -113,35 +113,106 @@ def _combine_components_properly(
 MIN_COMPONENT_DATA_POINTS = 100
 
 
-def combine_quality_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
-    """Combine quality sub-panels into a single quality axis (equal-weighted)."""
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_quality_axis")
-    components = []
+# ----------------------------------------------------------------------------
+# Data-driven axis combination
+#
+# Each axis is described by a list of component specs: (panel_key, display_name,
+# invert). `invert=True` negates the z-score (e.g. low accruals = high quality).
+# The `carry` axis has an extra dedup step so shareholder yield is dropped when
+# it duplicates dividend yield.
+# ----------------------------------------------------------------------------
 
-    roe = _get_panel(axis_panels, "quality_roe", dates, tickers)
-    if roe is not None and roe.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("ROE", cross_sectional_zscore(roe)))
+_AXIS_SPECS: Dict[str, list[tuple[str, str, bool]]] = {
+    "quality": [
+        ("quality_roe", "ROE", False),
+        ("quality_roa", "ROA", False),
+        ("quality_accruals", "Accruals", True),       # low accruals = high quality
+        ("quality_piotroski", "Piotroski", False),
+    ],
+    "liquidity": [
+        ("liquidity_amihud", "Amihud", True),         # low Amihud = more liquid
+        ("liquidity_turnover", "Turnover", False),
+        ("liquidity_spread_proxy", "Spread", True),   # low spread = more liquid
+    ],
+    "trading_intensity": [
+        ("trading_intensity_relative_volume", "RelVol", False),
+        ("trading_intensity_volume_trend", "VolTrend", False),
+        ("trading_intensity_turnover_velocity", "TurnoverVel", False),
+    ],
+    "sentiment": [
+        ("sentiment_52w_high_pct", "52wHigh", False),
+        ("sentiment_price_acceleration", "PriceAccel", False),
+        ("sentiment_reversal", "Reversal", False),
+    ],
+    "fundmom": [
+        ("fundmom_margin_change", "MarginChg", False),
+        ("fundmom_sales_accel", "SalesAccel", False),
+    ],
+    "carry": [
+        ("carry_dividend_yield", "DivYield", False),
+        ("carry_shareholder_yield", "ShareholderYield", False),
+    ],
+    "defensive": [
+        ("defensive_earnings_stability", "Stability", False),
+        ("defensive_beta_to_market", "LowBeta", True),  # low beta = defensive
+    ],
+}
 
-    roa = _get_panel(axis_panels, "quality_roa", dates, tickers)
-    if roa is not None and roa.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("ROA", cross_sectional_zscore(roa)))
 
-    accruals = _get_panel(axis_panels, "quality_accruals", dates, tickers)
-    if accruals is not None and accruals.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        # Low accruals = high quality, so invert
-        components.append(("Accruals", -cross_sectional_zscore(accruals)))
+def _combine_axis(
+    specs: list[tuple[str, str, bool]],
+    axis_panels: Dict[str, pd.DataFrame],
+    dates: pd.DatetimeIndex,
+    tickers: pd.Index,
+    axis_name: str,
+) -> pd.DataFrame:
+    """Generic, data-driven axis combination shared by all ``combine_*_axis`` functions.
 
-    piotroski = _get_panel(axis_panels, "quality_piotroski", dates, tickers)
-    if piotroski is not None and piotroski.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("Piotroski", cross_sectional_zscore(piotroski)))
+    For each component spec, look up the raw panel, check the data-coverage
+    threshold, cross-sectional z-score it (optionally inverted), and collect
+    the valid components. Components are then merged via
+    ``_combine_components_properly`` (NaN-aware equal-weighted mean).
+
+    Special case: the carry axis drops its shareholder-yield component when it
+    is identical to the dividend-yield panel (avoids double counting).
+    """
+    dates, tickers = _validate_reference_axes(dates, tickers, f"combine_{axis_name.lower()}_axis")
+    components: list[tuple[str, pd.DataFrame]] = []
+
+    # Track dividend-yield panel for carry-axis dedup (only the carry axis uses
+    # both carry_dividend_yield and carry_shareholder_yield).
+    carry_div_panel: pd.DataFrame | None = None
+
+    for panel_key, display_name, invert in specs:
+        panel = _get_panel(axis_panels, panel_key, dates, tickers)
+        if panel is None or panel.notna().sum().sum() <= MIN_COMPONENT_DATA_POINTS:
+            continue
+
+        # Carry-axis dedup: skip shareholder yield if it equals dividend yield.
+        if panel_key == "carry_dividend_yield":
+            carry_div_panel = panel
+        elif (
+            panel_key == "carry_shareholder_yield"
+            and carry_div_panel is not None
+            and carry_div_panel.equals(panel)
+        ):
+            continue
+
+        z = cross_sectional_zscore(panel)
+        components.append((display_name, -z if invert else z))
 
     if not components:
-        logger.warning("    ⚠️  Quality axis has no valid components")
+        logger.warning(f"    ⚠️  {axis_name} axis has no valid components")
         return pd.DataFrame(np.nan, index=dates, columns=tickers)
 
-    logger.info(f"    Quality axis components: {[c[0] for c in components]}")
+    logger.info(f"    {axis_name} axis components: {[c[0] for c in components]}")
 
     return _combine_components_properly(components, dates, tickers)
+
+
+def combine_quality_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
+    """Combine quality sub-panels into a single quality axis (equal-weighted)."""
+    return _combine_axis(_AXIS_SPECS["quality"], axis_panels, dates, tickers, "Quality")
 
 
 def combine_liquidity_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
@@ -152,31 +223,7 @@ def combine_liquidity_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.Datet
     - Real turnover (volume / shares outstanding)
     - Spread proxy (if available)
     """
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_liquidity_axis")
-    components = []
-
-    amihud = _get_panel(axis_panels, "liquidity_amihud", dates, tickers)
-    if amihud is not None and amihud.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        # Low Amihud = more liquid = good
-        components.append(("Amihud", -cross_sectional_zscore(amihud)))
-
-    turnover = _get_panel(axis_panels, "liquidity_turnover", dates, tickers)
-    if turnover is not None and turnover.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        # Higher turnover = more liquid
-        components.append(("Turnover", cross_sectional_zscore(turnover)))
-
-    spread = _get_panel(axis_panels, "liquidity_spread_proxy", dates, tickers)
-    if spread is not None and spread.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        # Low spread = more liquid = good
-        components.append(("Spread", -cross_sectional_zscore(spread)))
-
-    if not components:
-        logger.warning("    ⚠️  Liquidity axis has no valid components")
-        return pd.DataFrame(np.nan, index=dates, columns=tickers)
-
-    logger.info(f"    Liquidity axis components: {[c[0] for c in components]}")
-
-    return _combine_components_properly(components, dates, tickers)
+    return _combine_axis(_AXIS_SPECS["liquidity"], axis_panels, dates, tickers, "Liquidity")
 
 
 def combine_trading_intensity_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
@@ -189,124 +236,27 @@ def combine_trading_intensity_axis(axis_panels: Dict[str, pd.DataFrame], dates: 
 
     This is distinct from liquidity which measures ease of trading.
     """
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_trading_intensity_axis")
-    components = []
-
-    rel_vol = _get_panel(axis_panels, "trading_intensity_relative_volume", dates, tickers)
-    if rel_vol is not None and rel_vol.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("RelVol", cross_sectional_zscore(rel_vol)))
-
-    vol_trend = _get_panel(axis_panels, "trading_intensity_volume_trend", dates, tickers)
-    if vol_trend is not None and vol_trend.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("VolTrend", cross_sectional_zscore(vol_trend)))
-
-    turnover_vel = _get_panel(axis_panels, "trading_intensity_turnover_velocity", dates, tickers)
-    if turnover_vel is not None and turnover_vel.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("TurnoverVel", cross_sectional_zscore(turnover_vel)))
-
-    if not components:
-        logger.warning("    ⚠️  Trading Intensity axis has no valid components")
-        return pd.DataFrame(np.nan, index=dates, columns=tickers)
-
-    logger.info(f"    Trading Intensity axis components: {[c[0] for c in components]}")
-
-    return _combine_components_properly(components, dates, tickers)
+    return _combine_axis(_AXIS_SPECS["trading_intensity"], axis_panels, dates, tickers, "Trading Intensity")
 
 
 def combine_sentiment_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine sentiment sub-panels into a single axis (equal-weighted)."""
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_sentiment_axis")
-    components = []
-
-    high_pct = _get_panel(axis_panels, "sentiment_52w_high_pct", dates, tickers)
-    if high_pct is not None and high_pct.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("52wHigh", cross_sectional_zscore(high_pct)))
-
-    accel = _get_panel(axis_panels, "sentiment_price_acceleration", dates, tickers)
-    if accel is not None and accel.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("PriceAccel", cross_sectional_zscore(accel)))
-
-    reversal = _get_panel(axis_panels, "sentiment_reversal", dates, tickers)
-    if reversal is not None and reversal.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("Reversal", cross_sectional_zscore(reversal)))
-
-    if not components:
-        logger.warning("    ⚠️  Sentiment axis has no valid components")
-        return pd.DataFrame(np.nan, index=dates, columns=tickers)
-
-    logger.info(f"    Sentiment axis components: {[c[0] for c in components]}")
-
-    return _combine_components_properly(components, dates, tickers)
+    return _combine_axis(_AXIS_SPECS["sentiment"], axis_panels, dates, tickers, "Sentiment")
 
 
 def combine_fundmom_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine fundamental momentum sub-panels (equal-weighted)."""
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_fundmom_axis")
-    components = []
-
-    margin_chg = _get_panel(axis_panels, "fundmom_margin_change", dates, tickers)
-    if margin_chg is not None and margin_chg.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("MarginChg", cross_sectional_zscore(margin_chg)))
-
-    sales_accel = _get_panel(axis_panels, "fundmom_sales_accel", dates, tickers)
-    if sales_accel is not None and sales_accel.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("SalesAccel", cross_sectional_zscore(sales_accel)))
-
-    if not components:
-        logger.warning("    ⚠️  FundMom axis has no valid components")
-        return pd.DataFrame(np.nan, index=dates, columns=tickers)
-
-    logger.info(f"    FundMom axis components: {[c[0] for c in components]}")
-
-    return _combine_components_properly(components, dates, tickers)
+    return _combine_axis(_AXIS_SPECS["fundmom"], axis_panels, dates, tickers, "FundMom")
 
 
 def combine_carry_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine carry sub-panels (dividend yield)."""
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_carry_axis")
-    components = []
-
-    div_yield = _get_panel(axis_panels, "carry_dividend_yield", dates, tickers)
-    if div_yield is not None and div_yield.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("DivYield", cross_sectional_zscore(div_yield)))
-
-    # Could add shareholder yield here if data becomes available
-    sh_yield = _get_panel(axis_panels, "carry_shareholder_yield", dates, tickers)
-    if sh_yield is not None and sh_yield.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        # Only add if it's different from div_yield
-        if div_yield is None or not div_yield.equals(sh_yield):
-            components.append(("ShareholderYield", cross_sectional_zscore(sh_yield)))
-
-    if not components:
-        logger.warning("    ⚠️  Carry axis has no valid components")
-        return pd.DataFrame(np.nan, index=dates, columns=tickers)
-
-    logger.info(f"    Carry axis components: {[c[0] for c in components]}")
-
-    return _combine_components_properly(components, dates, tickers)
+    return _combine_axis(_AXIS_SPECS["carry"], axis_panels, dates, tickers, "Carry")
 
 
 def combine_defensive_axis(axis_panels: Dict[str, pd.DataFrame], dates: pd.DatetimeIndex, tickers: pd.Index) -> pd.DataFrame:
     """Combine defensive sub-panels (equal-weighted)."""
-    dates, tickers = _validate_reference_axes(dates, tickers, "combine_defensive_axis")
-    components = []
-
-    stability = _get_panel(axis_panels, "defensive_earnings_stability", dates, tickers)
-    if stability is not None and stability.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        components.append(("Stability", cross_sectional_zscore(stability)))
-
-    beta = _get_panel(axis_panels, "defensive_beta_to_market", dates, tickers)
-    if beta is not None and beta.notna().sum().sum() > MIN_COMPONENT_DATA_POINTS:
-        # Low beta = defensive
-        components.append(("LowBeta", -cross_sectional_zscore(beta)))
-
-    if not components:
-        logger.warning("    ⚠️  Defensive axis has no valid components")
-        return pd.DataFrame(np.nan, index=dates, columns=tickers)
-
-    logger.info(f"    Defensive axis components: {[c[0] for c in components]}")
-
-    return _combine_components_properly(components, dates, tickers)
+    return _combine_axis(_AXIS_SPECS["defensive"], axis_panels, dates, tickers, "Defensive")
 
 
 # ============================================================================

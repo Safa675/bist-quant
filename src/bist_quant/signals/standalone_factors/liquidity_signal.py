@@ -45,10 +45,9 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    CompositeFactorSignal,
     FactorData,
     FactorParams,
-    cross_sectional_zscore,
-    combine_components_zscore,
 )
 
 
@@ -61,13 +60,16 @@ class LiquidityParams:
     log_transform_amihud: bool = True  # Log transform reduces skewness
 
 
-class LiquiditySignal(FactorSignal):
+class LiquiditySignal(CompositeFactorSignal):
     """
     Liquidity factor: measures ease of trading.
 
     Higher scores indicate more liquid stocks (easier to trade).
     Combines Amihud illiquidity and turnover metrics.
     """
+
+    # Amihud is lower-is-better, so its z-score is inverted.
+    _invert_components = {"amihud"}
 
     @property
     def name(self) -> str:
@@ -124,8 +126,7 @@ class LiquiditySignal(FactorSignal):
         if liq_params.log_transform_amihud:
             amihud = np.log1p(amihud * 1e6).replace([np.inf, -np.inf], np.nan)
 
-        if amihud.notna().sum().sum() > 100:
-            panels["amihud"] = amihud
+        panels["amihud"] = amihud
 
         # Turnover = Volume / Shares Outstanding
         if data.shares_outstanding is not None:
@@ -133,32 +134,11 @@ class LiquiditySignal(FactorSignal):
             turnover = volume / shares.replace(0, np.nan)
             turnover_smooth = turnover.rolling(liq_params.turnover_lookback_days, min_periods=21).mean()
             turnover_smooth = turnover_smooth.replace([np.inf, -np.inf], np.nan)
+            panels["turnover"] = turnover_smooth
 
-            if turnover_smooth.notna().sum().sum() > 100:
-                panels["turnover"] = turnover_smooth
-
-        # Combine components
-        components = []
-
-        if "amihud" in panels:
-            # Invert Amihud (low = more liquid = good)
-            components.append(("amihud", -cross_sectional_zscore(panels["amihud"])))
-
-        if "turnover" in panels:
-            # High turnover = more liquid = good
-            components.append(("turnover", cross_sectional_zscore(panels["turnover"])))
-
-        if not components:
-            return pd.DataFrame(np.nan, index=dates, columns=tickers), {"warning": "No liquidity components"}
-
-        raw_scores = combine_components_zscore(components, dates, tickers)
-
-        metadata = {
-            "components": [c[0] for c in components],
-            "amihud_lookback": liq_params.amihud_lookback_days,
-            "turnover_lookback": liq_params.turnover_lookback_days,
-            "coverage_pct": float(raw_scores.notna().sum().sum()) / max(raw_scores.size, 1) * 100,
-        }
+        raw_scores, metadata = self._combine_component_panels(panels, dates, tickers)
+        metadata["amihud_lookback"] = liq_params.amihud_lookback_days
+        metadata["turnover_lookback"] = liq_params.turnover_lookback_days
 
         return raw_scores, metadata
 

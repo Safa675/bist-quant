@@ -26,6 +26,10 @@ from bist_quant.common.utils import (
     pick_row,
     pick_row_from_sheet,
 )
+from bist_quant.signals.fundamental_keys import (
+    NET_INCOME_KEYS,
+    TOTAL_ASSETS_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +37,6 @@ logger = logging.getLogger(__name__)
 # Fundamental data keys
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
-
-NET_INCOME_KEYS = (
-    "Dönem Karı (Zararı)",
-    "Net Dönem Karı (Zararı)",
-    "Sürdürülen Faaliyetler Dönem Karı (Zararı)",
-)
-
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
 
 
 def calculate_roa_for_ticker(

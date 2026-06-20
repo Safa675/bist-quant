@@ -163,6 +163,7 @@ class InvestmentSignal(FactorSignal):
                 REVENUE_KEYS,
                 TOTAL_ASSETS_KEYS,
             )
+            from ..fundamental_keys import DIVIDENDS_PAID_KEYS, RD_KEYS
             from ...common.utils import (
                 get_consolidated_sheet,
                 pick_row_from_sheet,
@@ -173,12 +174,7 @@ class InvestmentSignal(FactorSignal):
         except ImportError:
             return pd.DataFrame(np.nan, index=dates, columns=tickers)
 
-        # R&D keys
-        RD_KEYS = (
-            "Araştırma ve Geliştirme Giderleri (-)",
-            "Araştırma ve Geliştirme Giderleri",
-        )
-        DIVIDENDS_KEYS = ("Ödenen Temettüler",)
+        DIVIDENDS_KEYS = DIVIDENDS_PAID_KEYS
 
         # Get market cap for yield calculations
         if data.market_cap is not None:

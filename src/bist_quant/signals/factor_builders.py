@@ -25,6 +25,19 @@ from bist_quant.common.utils import (
     sum_ttm,
     validate_reference_axes,
 )
+from bist_quant.signals.fundamental_keys import (
+    CFO_KEYS,
+    CURRENT_ASSETS_KEYS,
+    CURRENT_LIABILITIES_KEYS,
+    DIVIDENDS_PAID_KEYS,
+    GROSS_PROFIT_KEYS,
+    LONG_TERM_DEBT_KEYS,
+    NET_INCOME_KEYS,
+    OPERATING_INCOME_KEYS,
+    REVENUE_KEYS,
+    TOTAL_ASSETS_KEYS,
+    TOTAL_EQUITY_KEYS,
+)
 from bist_quant.signals.value_signals import build_value_signals
 
 logger = logging.getLogger(__name__)
@@ -37,65 +50,6 @@ logger = logging.getLogger(__name__)
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"  # NOT "Finansal Durum Tablosu (Çeyreklik)"
 CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"  # NOT "Nakit Akış Tablosu (Çeyreklik)"
-
-REVENUE_KEYS = (
-    "Satış Gelirleri",
-    "Toplam Hasılat",
-    "Hasılat",
-    "Net Satışlar",
-)
-OPERATING_INCOME_KEYS = (
-    "Faaliyet Karı (Zararı)",
-    "Finansman Geliri (Gideri) Öncesi Faaliyet Karı (Zararı)",
-)
-GROSS_PROFIT_KEYS = (
-    "Brüt Kar (Zarar)",
-    "Ticari Faaliyetlerden Brüt Kar (Zarar)",
-)
-# Row name keys - ordered by preference (first match wins)
-NET_INCOME_KEYS = (
-    "Dönem Karı (Zararı)",  # Most common
-    "Dönem Net Karı (Zararı)",
-    "Net Dönem Karı (Zararı)",
-    "Ana Ortaklık Payları",  # Net income to parent
-)
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "TOPLAM VARLIKLAR",
-    "Varlık Toplamı",
-)
-TOTAL_EQUITY_KEYS = (
-    "Özkaynaklar",
-    "Toplam Özkaynaklar",
-    "TOPLAM ÖZKAYNAKLAR",
-    "Ana Ortaklığa Ait Özkaynaklar",
-)
-CURRENT_ASSETS_KEYS = (
-    "Dönen Varlıklar",
-    "DÖNEN VARLIKLAR",
-)
-CURRENT_LIABILITIES_KEYS = (
-    "Kısa Vadeli Yükümlülükler",
-    "KISA VADELİ YÜKÜMLÜLÜKLER",
-    "Toplam Kısa Vadeli Yükümlülükler",
-)
-LONG_TERM_DEBT_KEYS = (
-    "Uzun Vadeli Yükümlülükler",  # Use total long-term liabilities as proxy
-    "Uzun Vadeli Borçlanmalar",
-    "Uzun Vadeli Finansal Borçlar",
-    "Finansal Borçlar",
-)
-CFO_KEYS = (
-    "İşletme Faaliyetlerinden Nakit Akışları",
-    "Faaliyetlerden Elde Edilen Nakit Akışları",
-    "Esas Faaliyetlerden Kaynaklanan Net Nakit",
-)
-DIVIDENDS_PAID_KEYS = (
-    "Ödenen Temettüler",
-    "Ödenen Kar Payları",
-    "Temettü Ödemeleri",
-    "Kar Payı Ödemeleri",
-)
 
 
 # ============================================================================
@@ -366,6 +320,43 @@ def _build_value_level_growth_panels(
 # QUALITY FACTOR PANELS
 # ============================================================================
 
+def _load_ticker_fundamental_sheets(
+    ticker: str,
+    fundamentals_parquet: pd.DataFrame | None,
+    fundamentals: Dict,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, bool] | None:
+    """Load (income, balance, cash_flow) sheets for one ticker.
+
+    Returns ``None`` if no data is available. The ``use_parquet`` flag
+    indicates whether sheets came from the consolidated parquet (row-indexed,
+    picked via ``pick_row_from_sheet``) or from per-ticker Excel files
+    (picked via ``pick_row``).
+    """
+    use_parquet = fundamentals_parquet is not None
+    if use_parquet:
+        inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
+        bs = get_consolidated_sheet(fundamentals_parquet, ticker, BALANCE_SHEET)
+        cf = get_consolidated_sheet(fundamentals_parquet, ticker, CASH_FLOW_SHEET)
+    else:
+        fund_data = fundamentals.get(str(ticker), {}) if isinstance(fundamentals, dict) else {}
+        xlsx_path = fund_data.get("path") if isinstance(fund_data, dict) else None
+        if xlsx_path is None:
+            return None
+        try:
+            inc = pd.read_excel(xlsx_path, sheet_name=INCOME_SHEET)
+            bs = pd.read_excel(xlsx_path, sheet_name=BALANCE_SHEET)
+            try:
+                cf = pd.read_excel(xlsx_path, sheet_name=CASH_FLOW_SHEET)
+            except Exception:
+                cf = pd.DataFrame()
+        except Exception:
+            return None
+
+    if inc.empty or bs.empty:
+        return None
+    return inc, bs, cf, use_parquet
+
+
 def build_quality_panels(
     fundamentals: Dict,
     close: pd.DataFrame,
@@ -383,40 +374,22 @@ def build_quality_panels(
     logger.info("  Building quality factor panels...")
     fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader is not None else None
 
+    if fundamentals_parquet is None:
+        logger.warning("    ⚠️  No fundamentals parquet - falling back to per-ticker Excel files")
+
     roe_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
     roa_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
     accruals_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
     piotroski_panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
 
-    if fundamentals_parquet is None:
-        logger.warning("    ⚠️  No fundamentals parquet - falling back to per-ticker Excel files")
-
     count = 0
     success_count = 0
     for ticker in tickers:
         try:
-            use_parquet = fundamentals_parquet is not None
-            if use_parquet:
-                inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
-                bs = get_consolidated_sheet(fundamentals_parquet, ticker, BALANCE_SHEET)
-                cf = get_consolidated_sheet(fundamentals_parquet, ticker, CASH_FLOW_SHEET)
-            else:
-                fund_data = fundamentals.get(str(ticker), {}) if isinstance(fundamentals, dict) else {}
-                xlsx_path = fund_data.get("path") if isinstance(fund_data, dict) else None
-                if xlsx_path is None:
-                    continue
-                try:
-                    inc = pd.read_excel(xlsx_path, sheet_name=INCOME_SHEET)
-                    bs = pd.read_excel(xlsx_path, sheet_name=BALANCE_SHEET)
-                    try:
-                        cf = pd.read_excel(xlsx_path, sheet_name=CASH_FLOW_SHEET)
-                    except Exception:
-                        cf = pd.DataFrame()
-                except Exception:
-                    continue
-
-            if inc.empty or bs.empty:
+            sheets = _load_ticker_fundamental_sheets(ticker, fundamentals_parquet, fundamentals)
+            if sheets is None:
                 continue
+            inc, bs, cf, use_parquet = sheets
 
             # Extract key rows
             row_picker = pick_row_from_sheet if use_parquet else pick_row
@@ -934,20 +907,7 @@ def build_carry_panels(
         metrics_df = data_loader.load_fundamental_metrics()
         if not metrics_df.empty and "dividend_yield" in metrics_df.columns:
             logger.info("    Loading dividend yield from fundamental metrics...")
-            available_tickers = set(metrics_df.index.get_level_values(0))
-            for ticker in tickers:
-                if ticker not in available_tickers:
-                    continue
-                try:
-                    series = metrics_df.loc[ticker, "dividend_yield"]
-                    if isinstance(series, pd.DataFrame):
-                        series = series.iloc[:, 0]
-                    series = series.sort_index()
-                    series = series[~series.index.duplicated(keep="last")]
-                    series.index = pd.to_datetime(series.index)
-                    div_yield_panel[ticker] = apply_lag(series, dates)
-                except Exception:
-                    continue
+            div_yield_panel = _build_metric_panel(metrics_df, "dividend_yield", dates, tickers)
     except Exception as e:
         logger.warning(f"    ⚠️  Could not load dividend metrics: {e}")
 

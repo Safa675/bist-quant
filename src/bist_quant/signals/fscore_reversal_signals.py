@@ -27,6 +27,17 @@ from bist_quant.common.utils import (
     pick_row_from_sheet,
     sum_ttm,
 )
+from bist_quant.signals.fundamental_keys import (
+    CURRENT_ASSETS_KEYS,
+    CURRENT_LIABILITIES_KEYS,
+    GROSS_PROFIT_KEYS,
+    LONG_TERM_DEBT_KEYS,
+    NET_INCOME_KEYS,
+    OPERATING_CF_KEYS,
+    REVENUE_KEYS,
+    SHARES_OUTSTANDING_KEYS,
+    TOTAL_ASSETS_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,42 +54,6 @@ FSCORE_LOW_THRESHOLD = 3   # F-Score <= 3 is "weak"
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
 CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"
-
-NET_INCOME_KEYS = (
-    "Dönem Net Karı veya Zararı",
-    "Dönem Karı (Zararı)",
-    "Net Dönem Karı (Zararı)",
-)
-OPERATING_CF_KEYS = (
-    "İşletme Faaliyetlerinden Nakit Akışları",
-    "İşletme Faaliyetlerinden Kaynaklanan Net Nakit",
-)
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
-LONG_TERM_DEBT_KEYS = (
-    "Uzun Vadeli Borçlanmalar",
-    "Uzun Vadeli Yükümlülükler",
-)
-CURRENT_ASSETS_KEYS = (
-    "Dönen Varlıklar",
-)
-CURRENT_LIABILITIES_KEYS = (
-    "Kısa Vadeli Yükümlülükler",
-)
-REVENUE_KEYS = (
-    "Satış Gelirleri",
-    "Hasılat",
-    "Net Satışlar",
-)
-GROSS_PROFIT_KEYS = (
-    "Brüt Kar (Zarar)",
-    "Brüt Kar",
-)
-SHARES_OUTSTANDING_KEYS = (
-    "Ödenmiş Sermaye",
-)
 
 
 # ============================================================================

@@ -41,15 +41,9 @@ import numpy as np
 import pandas as pd
 
 from bist_quant.common.utils import (
-    apply_lag,
     assert_has_cross_section,
     assert_panel_not_constant,
-    coerce_quarter_cols,
-    get_consolidated_sheet,
-    pick_row,
-    pick_row_from_sheet,
     raise_signal_data_error,
-    sum_ttm,
 )
 from bist_quant.signals.investment_signals import build_investment_signals
 from bist_quant.signals.small_cap_signals import build_small_cap_signals
@@ -71,6 +65,24 @@ from bist_quant.signals.factor_builders import (
     REVENUE_KEYS,
     OPERATING_INCOME_KEYS,
     GROSS_PROFIT_KEYS,
+    _build_metric_panel,
+    _calculate_margin_level_growth_for_ticker,
+    _build_profitability_margin_panels,
+    _build_value_level_growth_panels,
+)
+from bist_quant.signals.debug_utils import (
+    _debug_log,
+    _debug_panel_stats,
+    _debug_axis_component_stats,
+)
+from bist_quant.signals._axis_cache import (
+    AXIS_CACHE_FILENAME,
+    AXIS_PANEL_NAMES,
+    OPTIONAL_EMPTY_CACHE_PANELS,
+    resolve_axis_cache_path as _resolve_axis_cache_path,
+    load_axis_construction_cache as _load_axis_construction_cache,
+    save_axis_construction_cache as _save_axis_construction_cache,
+    cache_panel_stale_reason as _cache_panel_stale_reason,
 )
 from bist_quant.signals.factor_axes import (
     cross_sectional_zscore,
@@ -115,48 +127,6 @@ DEFAULT_ORTHOGONALIZE_AXES = False
 DEFAULT_ORTHOG_MIN_OVERLAP = 20
 DEFAULT_ORTHOG_EPSILON = 1e-8
 
-# Axis cache
-AXIS_CACHE_FILENAME = "multi_factor_axis_construction.parquet"
-AXIS_PANEL_NAMES = (
-    # Original panels
-    "size_small_signal",
-    "value_level_signal",
-    "value_growth_signal",
-    "profit_margin_level",
-    "profit_margin_growth",
-    "investment_reinvestment_signal",
-    "realized_volatility",
-    "market_beta",
-    # New panels
-    "quality_roe",
-    "quality_roa",
-    "quality_accruals",
-    "quality_piotroski",
-    "liquidity_amihud",
-    "liquidity_turnover",
-    "liquidity_spread_proxy",
-    # Trading intensity (separate from liquidity)
-    "trading_intensity_relative_volume",
-    "trading_intensity_volume_trend",
-    "trading_intensity_turnover_velocity",
-    "sentiment_52w_high_pct",
-    "sentiment_price_acceleration",
-    "sentiment_reversal",
-    "fundmom_margin_change",
-    "fundmom_sales_accel",
-    "carry_dividend_yield",
-    "carry_shareholder_yield",
-    "defensive_earnings_stability",
-    "defensive_beta_to_market",
-)
-
-# Optional panels that may legitimately be empty in some environments.
-# Keep them in cache if available, but do not treat emptiness as stale/corrupt.
-OPTIONAL_EMPTY_CACHE_PANELS = {
-    "liquidity_spread_proxy",   # Requires intraday/spread-like inputs we may not have.
-    "carry_shareholder_yield",  # Often unavailable in Turkey; carry uses dividend yield.
-}
-
 # Required panel groups for rebuild triggers.
 REQUIRED_LIQUIDITY_PANELS = (
     "liquidity_amihud",
@@ -182,75 +152,6 @@ def _squash_metric(
     if lower is not None or upper is not None:
         clipped = clipped.clip(lower=lower, upper=upper)
     return np.tanh(clipped / scale)
-
-
-def _debug_log(debug: bool, message: str) -> None:
-    """Emit debug log message when detailed tracing is enabled."""
-    if debug:
-        print(f"  [FIVE_FACTOR_DEBUG] {message}")
-
-
-def _debug_panel_stats(debug: bool, name: str, panel: pd.DataFrame | None) -> None:
-    """Print compact panel diagnostics."""
-    if not debug:
-        return
-    if panel is None:
-        _debug_log(debug, f"{name}: missing")
-        return
-    if panel.empty:
-        _debug_log(debug, f"{name}: empty")
-        return
-
-    n_dates, n_tickers = panel.shape
-    non_na = int(panel.notna().sum().sum())
-    total = max(n_dates * n_tickers, 1)
-    coverage = non_na / total
-    latest_non_na = int(panel.iloc[-1].notna().sum()) if n_dates else 0
-
-    valid_date_mask = panel.notna().any(axis=1).to_numpy()
-    if valid_date_mask.any():
-        valid_idx = np.flatnonzero(valid_date_mask)
-        first_date = panel.index[valid_idx[0]].date()
-        last_date = panel.index[valid_idx[-1]].date()
-        span = f"{first_date}..{last_date}"
-    else:
-        span = "n/a"
-
-    _debug_log(
-        debug,
-        f"{name}: shape={n_dates}x{n_tickers}, non_na={non_na}, coverage={coverage:.2%}, "
-        f"latest_non_na={latest_non_na}, span={span}",
-    )
-
-
-def _debug_axis_component_stats(
-    debug: bool,
-    axis_name: str,
-    component: pd.DataFrame,
-    winning_bucket: pd.Series,
-    high_daily: pd.Series,
-    low_daily: pd.Series,
-) -> None:
-    """Print diagnostics for one computed axis component."""
-    if not debug:
-        return
-
-    latest_scores = component.iloc[-1].dropna() if not component.empty else pd.Series(dtype=float)
-    top_names = ", ".join(latest_scores.nlargest(3).index.tolist()) if not latest_scores.empty else "n/a"
-    bottom_names = ", ".join(latest_scores.nsmallest(3).index.tolist()) if not latest_scores.empty else "n/a"
-
-    non_na_buckets = winning_bucket.dropna()
-    latest_bucket = non_na_buckets.iloc[-1] if not non_na_buckets.empty else "n/a"
-
-    spread = (high_daily - low_daily).dropna()
-    spread_mean = float(spread.mean()) if not spread.empty else np.nan
-    spread_std = float(spread.std()) if not spread.empty else np.nan
-
-    _debug_log(
-        debug,
-        f"axis={axis_name}: latest_bucket={latest_bucket}, spread_mean={spread_mean:.4%}, "
-        f"spread_std={spread_std:.4%}, top={top_names}, bottom={bottom_names}",
-    )
 
 
 def _mean_abs_pairwise_corr(
@@ -419,257 +320,9 @@ def _build_two_sided_axis_raw(
     return axis_raw.where(~both_missing)
 
 
-def _build_metric_panel(
-    metrics_df: pd.DataFrame,
-    metric_name: str,
-    dates: pd.DatetimeIndex,
-    tickers: pd.Index,
-) -> pd.DataFrame:
-    """Convert (ticker, date) metric series into a daily Date x Ticker panel."""
-    panel = pd.DataFrame(np.nan, index=dates, columns=tickers, dtype=float)
-
-    if metrics_df.empty or metric_name not in metrics_df.columns:
-        return panel
-
-    available_tickers = set(metrics_df.index.get_level_values(0))
-    for ticker in tickers:
-        if ticker not in available_tickers:
-            continue
-        try:
-            series = metrics_df.loc[ticker, metric_name]
-            if isinstance(series, pd.DataFrame):
-                series = series.iloc[:, 0]
-            series = series.sort_index()
-            series = series[~series.index.duplicated(keep="last")]
-            series.index = pd.to_datetime(series.index)
-            panel[ticker] = apply_lag(series, dates)
-        except KeyError:
-            # Ticker or metric not found in index
-            continue
-        except (ValueError, TypeError) as e:
-            # Data conversion issues
-            print(f"    Warning: Could not process {metric_name} for {ticker}: {e}")
-            continue
-
-    return panel
-
-
-def _calculate_margin_level_growth_for_ticker(
-    xlsx_path: Path | None,
-    ticker: str,
-    fundamentals_parquet: pd.DataFrame | None = None,
-) -> tuple[pd.Series | None, pd.Series | None]:
-    """Return profitability margin level and YoY margin growth series for one ticker."""
-    if fundamentals_parquet is not None:
-        inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
-        if inc.empty:
-            return None, None
-        rev_row = pick_row_from_sheet(inc, REVENUE_KEYS)
-        op_row = pick_row_from_sheet(inc, OPERATING_INCOME_KEYS)
-        gp_row = pick_row_from_sheet(inc, GROSS_PROFIT_KEYS)
-    else:
-        if xlsx_path is None:
-            return None, None
-        try:
-            inc = pd.read_excel(xlsx_path, sheet_name=INCOME_SHEET)
-        except Exception:
-            return None, None
-        rev_row = pick_row(inc, REVENUE_KEYS)
-        op_row = pick_row(inc, OPERATING_INCOME_KEYS)
-        gp_row = pick_row(inc, GROSS_PROFIT_KEYS)
-
-    if rev_row is None or op_row is None or gp_row is None:
-        return None, None
-
-    rev = coerce_quarter_cols(rev_row)
-    op = coerce_quarter_cols(op_row)
-    gp = coerce_quarter_cols(gp_row)
-    if rev.empty or op.empty or gp.empty:
-        return None, None
-
-    rev_ttm = sum_ttm(rev)
-    op_ttm = sum_ttm(op)
-    gp_ttm = sum_ttm(gp)
-    if rev_ttm.empty or op_ttm.empty or gp_ttm.empty:
-        return None, None
-
-    combined = pd.concat([rev_ttm, op_ttm, gp_ttm], axis=1, join="inner").dropna()
-    if combined.empty:
-        return None, None
-    combined.columns = ["RevenueTTM", "OperatingIncomeTTM", "GrossProfitTTM"]
-
-    revenue = combined["RevenueTTM"].replace(0.0, np.nan)
-    op_margin = combined["OperatingIncomeTTM"] / revenue
-    gp_margin = combined["GrossProfitTTM"] / revenue
-    # Weighted average of operating and gross margins (weights configurable)
-    OP_MARGIN_WEIGHT = 0.60
-    GP_MARGIN_WEIGHT = 0.40
-    margin_level = (OP_MARGIN_WEIGHT * op_margin + GP_MARGIN_WEIGHT * gp_margin).replace([np.inf, -np.inf], np.nan).dropna()
-    if margin_level.empty:
-        return None, None
-
-    # YoY margin growth (diff of 4 quarters)
-    # Note: This assumes quarterly data frequency
-    margin_growth = margin_level.diff(4).replace([np.inf, -np.inf], np.nan).dropna()
-    return margin_level.sort_index(), margin_growth.sort_index() if not margin_growth.empty else None
-
-
-def _build_profitability_margin_panels(
-    fundamentals: Dict,
-    dates: pd.DatetimeIndex,
-    data_loader,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build lagged margin-level and margin-growth panels."""
-    fundamentals_parquet = data_loader.load_fundamentals_parquet() if data_loader is not None else None
-    level_panel: Dict[str, pd.Series] = {}
-    growth_panel: Dict[str, pd.Series] = {}
-
-    count = 0
-    for ticker, fund_data in fundamentals.items():
-        xlsx_path = fund_data.get("path") if isinstance(fund_data, dict) else None
-        margin_level, margin_growth = _calculate_margin_level_growth_for_ticker(
-            xlsx_path=xlsx_path,
-            ticker=ticker,
-            fundamentals_parquet=fundamentals_parquet,
-        )
-
-        if margin_level is not None and not margin_level.empty:
-            lagged_level = apply_lag(margin_level, dates)
-            if not lagged_level.empty:
-                level_panel[ticker] = lagged_level
-
-        if margin_growth is not None and not margin_growth.empty:
-            lagged_growth = apply_lag(margin_growth, dates)
-            if not lagged_growth.empty:
-                growth_panel[ticker] = lagged_growth
-
-        count += 1
-        if count % 100 == 0:
-            print(f"  Profitability margin progress: {count}/{len(fundamentals)}")
-
-    level_df = pd.DataFrame(level_panel, index=dates)
-    growth_df = pd.DataFrame(growth_panel, index=dates)
-    return level_df, growth_df
-
-
-def _build_value_level_growth_panels(
-    fundamentals: Dict,
-    close: pd.DataFrame,
-    dates: pd.DatetimeIndex,
-    tickers: pd.Index,
-    data_loader,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build value level and lagged YoY value-growth panels."""
-    level_df = build_value_signals(
-        fundamentals,
-        close,
-        dates,
-        data_loader,
-    ).reindex(index=dates, columns=tickers)
-
-    growth_df = level_df.diff(VALUE_GROWTH_LOOKBACK_DAYS)
-    growth_df = growth_df.replace([np.inf, -np.inf], np.nan)
-    return level_df, growth_df
-
-
 # ============================================================================
-# AXIS CACHE MANAGEMENT
+# AXIS CONSTRUCTION PANELS
 # ============================================================================
-
-def _resolve_axis_cache_path(data_loader, cache_path: Path | str | None = None) -> Path:
-    """Resolve on-disk path for axis construction cache parquet."""
-    if cache_path is not None:
-        return Path(cache_path)
-    if data_loader is not None and hasattr(data_loader, "data_dir"):
-        return Path(data_loader.data_dir) / AXIS_CACHE_FILENAME
-    return Path(__file__).resolve().parents[3] / "data" / AXIS_CACHE_FILENAME
-
-
-def _load_axis_construction_cache(
-    cache_path: Path,
-    dates: pd.DatetimeIndex,
-    tickers: pd.Index,
-) -> Dict[str, pd.DataFrame]:
-    """Load cached axis construction panels from parquet."""
-    if not cache_path.exists():
-        return {}
-
-    try:
-        cached = pd.read_parquet(cache_path)
-    except Exception as exc:
-        print(f"  ⚠️  Failed to read axis cache {cache_path}: {exc}")
-        return {}
-
-    if cached.empty:
-        return {}
-
-    if not isinstance(cached.columns, pd.MultiIndex):
-        try:
-            cached.columns = pd.MultiIndex.from_tuples(cached.columns)
-        except Exception:
-            print(f"  ⚠️  Axis cache columns are not multi-indexed: {cache_path}")
-            return {}
-
-    lvl0 = cached.columns.get_level_values(0)
-    loaded: Dict[str, pd.DataFrame] = {}
-    for panel_name in AXIS_PANEL_NAMES:
-        if panel_name not in lvl0:
-            continue
-        panel = cached[panel_name]
-        panel.index = pd.to_datetime(panel.index)
-        panel.columns = pd.Index(panel.columns).astype(str)
-        panel = panel.reindex(index=dates, columns=tickers)
-        loaded[panel_name] = panel
-
-    return loaded
-
-
-def _save_axis_construction_cache(
-    cache_path: Path,
-    panels: Dict[str, pd.DataFrame],
-    dates: pd.DatetimeIndex,
-    tickers: pd.Index,
-) -> None:
-    """Persist axis construction panels to parquet."""
-    to_save: Dict[str, pd.DataFrame] = {}
-    for panel_name in AXIS_PANEL_NAMES:
-        panel = panels.get(panel_name)
-        if panel is None or panel.empty:
-            continue
-        to_save[panel_name] = panel.reindex(index=dates, columns=tickers).astype(float)
-
-    if not to_save:
-        return
-
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    wide = pd.concat(to_save, axis=1)
-    wide.to_parquet(cache_path)
-    print(f"  💾 Saved axis construction cache: {cache_path}")
-
-
-def _cache_panel_stale_reason(panel_name: str, panel: pd.DataFrame | None) -> str | None:
-    """Return reason string when cached panel looks stale/corrupt, else None."""
-    if panel is None:
-        return "missing"
-    if panel.empty:
-        return "empty_shape"
-
-    # Some panels are optional and may be all-NaN by design.
-    if panel_name in OPTIONAL_EMPTY_CACHE_PANELS:
-        return None
-
-    non_na_total = int(panel.notna().sum().sum())
-    if non_na_total == 0:
-        return "all_nan"
-
-    # If historical values exist but latest row is fully empty, cache is stale
-    # relative to current date/ticker universe.
-    latest_non_na = int(panel.iloc[-1].notna().sum()) if len(panel.index) > 0 else 0
-    if latest_non_na == 0:
-        return "no_latest_coverage"
-
-    return None
-
 
 def _build_axis_construction_panels(
     close: pd.DataFrame,

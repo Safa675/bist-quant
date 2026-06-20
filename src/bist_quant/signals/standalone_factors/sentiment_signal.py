@@ -45,10 +45,9 @@ import pandas as pd
 
 from .base import (
     FactorSignal,
+    CompositeFactorSignal,
     FactorData,
     FactorParams,
-    cross_sectional_zscore,
-    combine_components_zscore,
 )
 
 
@@ -63,7 +62,7 @@ class SentimentParams:
     include_reversal: bool = True          # Include reversal component
 
 
-class SentimentSignal(FactorSignal):
+class SentimentSignal(CompositeFactorSignal):
     """
     Sentiment/Price Action factor: captures technical patterns.
 
@@ -117,42 +116,21 @@ class SentimentSignal(FactorSignal):
         ).max()
         high_proximity = close / rolling_high.replace(0, np.nan)
         high_proximity = high_proximity.replace([np.inf, -np.inf], np.nan)
-
-        if high_proximity.notna().sum().sum() > 100:
-            panels["52w_high_pct"] = high_proximity
+        panels["52w_high_pct"] = high_proximity
 
         # 2. Price Acceleration
         mom_fast = close.pct_change(sent_params.acceleration_fast_days)
         mom_slow = close.pct_change(sent_params.acceleration_slow_days)
-        acceleration = mom_fast - mom_slow
-
-        if acceleration.notna().sum().sum() > 100:
-            panels["price_acceleration"] = acceleration
+        panels["price_acceleration"] = mom_fast - mom_slow
 
         # 3. Short-term Reversal (inverted short-term return)
         if sent_params.include_reversal:
-            reversal = -close.pct_change(sent_params.reversal_lookback_days)
+            panels["reversal"] = -close.pct_change(sent_params.reversal_lookback_days)
 
-            if reversal.notna().sum().sum() > 100:
-                panels["reversal"] = reversal
-
-        # Combine components
-        components = []
-        for name, panel in panels.items():
-            components.append((name, cross_sectional_zscore(panel)))
-
-        if not components:
-            return pd.DataFrame(np.nan, index=dates, columns=tickers), {"warning": "No components"}
-
-        raw_scores = combine_components_zscore(components, dates, tickers)
-
-        metadata = {
-            "components": [c[0] for c in components],
-            "high_lookback": sent_params.high_lookback_days,
-            "acceleration_windows": (sent_params.acceleration_fast_days, sent_params.acceleration_slow_days),
-            "reversal_lookback": sent_params.reversal_lookback_days,
-            "coverage_pct": float(raw_scores.notna().sum().sum()) / max(raw_scores.size, 1) * 100,
-        }
+        raw_scores, metadata = self._combine_component_panels(panels, dates, tickers)
+        metadata["high_lookback"] = sent_params.high_lookback_days
+        metadata["acceleration_windows"] = (sent_params.acceleration_fast_days, sent_params.acceleration_slow_days)
+        metadata["reversal_lookback"] = sent_params.reversal_lookback_days
 
         return raw_scores, metadata
 

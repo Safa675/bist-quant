@@ -27,17 +27,13 @@ from bist_quant.common.utils import (
     pick_row,
     pick_row_from_sheet,
 )
+from bist_quant.signals.fundamental_keys import TOTAL_ASSETS_KEYS
 
 logger = logging.getLogger(__name__)
 
 
 # Fundamental data keys
 BALANCE_SHEET = "Bilanço"
-
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
 
 
 def calculate_asset_growth_for_ticker(

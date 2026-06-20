@@ -27,6 +27,7 @@ from bist_quant.common.utils import (
     pick_row,
     pick_row_from_sheet,
 )
+from bist_quant.signals.fundamental_keys import TOTAL_ASSETS_KEYS
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,6 @@ ASSET_GROWTH_TOP_PERCENTILE = 0.30  # Top 30% by asset growth
 
 # Fundamental data keys
 BALANCE_SHEET = "Bilanço"
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
 
 
 # ============================================================================

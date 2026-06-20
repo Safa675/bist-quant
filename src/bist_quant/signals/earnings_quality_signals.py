@@ -26,6 +26,13 @@ from bist_quant.common.utils import (
     pick_row_from_sheet,
     sum_ttm,
 )
+from bist_quant.signals.fundamental_keys import (
+    NET_INCOME_KEYS,
+    OPERATING_CF_KEYS,
+    TOTAL_ASSETS_KEYS,
+    TOTAL_EQUITY_KEYS,
+    TOTAL_LIABILITIES_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,39 +44,6 @@ logger = logging.getLogger(__name__)
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
 CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"
-
-# Net Income
-NET_INCOME_KEYS = (
-    "Dönem Net Karı veya Zararı",
-    "Dönem Karı (Zararı)",
-    "Net Dönem Karı (Zararı)",
-    "Dönem Net Kar/Zararı",
-)
-
-# Operating Cash Flow
-OPERATING_CF_KEYS = (
-    "İşletme Faaliyetlerinden Nakit Akışları",
-    "İşletme Faaliyetlerinden Kaynaklanan Net Nakit",
-)
-
-# Total Assets
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
-
-# Total Equity
-TOTAL_EQUITY_KEYS = (
-    "Özkaynaklar",
-    "Toplam Özkaynaklar",
-    "Ana Ortaklığa Ait Özkaynaklar",
-)
-
-# Total Liabilities (for debt calculation)
-TOTAL_LIABILITIES_KEYS = (
-    "Toplam Yükümlülükler",
-    "Toplam Borçlar",
-)
 
 
 # ============================================================================

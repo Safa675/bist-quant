@@ -24,6 +24,12 @@ from bist_quant.common.utils import (
     sum_ttm,
     validate_signal_panel_schema,
 )
+from bist_quant.signals.fundamental_keys import (
+    DIVIDENDS_PAID_KEYS,
+    RD_KEYS,
+    REVENUE_KEYS,
+    TOTAL_ASSETS_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,24 +38,6 @@ logger = logging.getLogger(__name__)
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
 CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"
-
-REVENUE_KEYS = (
-    "Satış Gelirleri",
-    "Toplam Hasılat",
-    "Hasılat",
-    "Net Satışlar",
-)
-RD_KEYS = (
-    "Araştırma ve Geliştirme Giderleri (-)",
-    "Araştırma ve Geliştirme Giderleri",
-)
-DIVIDENDS_PAID_KEYS = (
-    "Ödenen Temettüler",
-)
-TOTAL_ASSETS_KEYS = (
-    "Toplam Varlıklar",
-    "Toplam Aktifler",
-)
 
 
 def calculate_investment_metrics_for_ticker(
