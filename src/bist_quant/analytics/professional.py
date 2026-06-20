@@ -22,6 +22,7 @@ from .core_metrics import (
     covariance,
     curve_to_returns,
     mean,
+    normal_cdf,
     returns_to_equity,
     sample_std_dev,
 )
@@ -45,13 +46,6 @@ def _variance(vals: list[float]) -> float:
 
 def _normal_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / math.sqrt(2 * math.pi)
-
-def _normal_cdf(x: float) -> float:
-    sign = -1 if x < 0 else 1
-    ax = abs(x) / math.sqrt(2)
-    t = 1 / (1 + 0.3275911 * ax)
-    erf = 1 - (((((1.061405429*t - 1.453152027)*t + 1.421413741)*t - 0.284496736)*t + 0.254829592)*t * math.exp(-ax*ax))
-    return 0.5 * (1 + sign * erf)
 
 def _seeded_random(seed: int):
     state = [seed & 0xFFFFFFFF or 123456789]
@@ -346,18 +340,18 @@ def compute_option_greeks(inp: OptionGreeksInput) -> OptionGreeksResult:
     st = math.sqrt(t)
     d1 = (math.log(s/k) + (r + 0.5*sig*sig)*t) / (sig*st)
     d2 = d1 - sig*st
-    nd1, nd2 = _normal_cdf(d1), _normal_cdf(d2)
+    nd1, nd2 = normal_cdf(d1), normal_cdf(d2)
     pdf1 = _normal_pdf(d1)
     disc = math.exp(-r*t)
     call_p = s*nd1 - k*disc*nd2
-    put_p = k*disc*_normal_cdf(-d2) - s*_normal_cdf(-d1)
+    put_p = k*disc*normal_cdf(-d2) - s*normal_cdf(-d1)
     delta = nd1 if inp.option_type == "call" else nd1 - 1
     gamma = pdf1 / (s*sig*st)
     vega = s*pdf1*st / 100
     tc = (-s*pdf1*sig/(2*st) - r*k*disc*nd2) / 365
-    tp = (-s*pdf1*sig/(2*st) + r*k*disc*_normal_cdf(-d2)) / 365
+    tp = (-s*pdf1*sig/(2*st) + r*k*disc*normal_cdf(-d2)) / 365
     rc = k*t*disc*nd2 / 100
-    rp = -k*t*disc*_normal_cdf(-d2) / 100
+    rp = -k*t*disc*normal_cdf(-d2) / 100
     is_call = inp.option_type == "call"
     return OptionGreeksResult(_rd(delta,6), _rd(gamma,6), _rd(tc if is_call else tp,6),
                               _rd(vega,6), _rd(rc if is_call else rp,6),
