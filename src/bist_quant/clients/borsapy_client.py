@@ -5,8 +5,7 @@ Wraps borsapy with caching, error handling, and integration
 with the existing data pipeline.
 
 Resilience primitives (circuit breaker, retry) are in
-:mod:`bist_quant.common.resilience`.  MCP fallback helpers are in
-:mod:`bist_quant.clients.borsapy_mcp`.
+:mod:`bist_quant.common.resilience`.
 """
 
 import logging
@@ -28,7 +27,6 @@ except ImportError:
 import httpx
 import pandas as pd
 
-from bist_quant.clients.borsapy_mcp import MCPFallbackClient
 from bist_quant.common.resilience import (
     CircuitBreaker,
     CircuitBreakerError,
@@ -47,7 +45,6 @@ except ImportError:
 
 warnings.filterwarnings("ignore")
 
-DEFAULT_MCP_ENDPOINT = "https://borsamcp.fastmcp.app/mcp"
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "configs" / "borsapy_config.yaml"
 
 # Bank and financial institution tickers that require UFRS accounting group
@@ -80,20 +77,15 @@ class BorsapyClient:
     def __init__(
         self,
         cache_dir: Optional[Path] = None,
-        use_mcp_fallback: bool = True,
-        mcp_endpoint: str | None = None,
-        timeout: float | None = None,
         config_path: Path | str | None = None,
         disk_cache: "DiskCache | None" = None,
+        **kwargs,
     ):
         """
         Initialize the borsapy client.
 
         Args:
             cache_dir: Directory for caching data. Defaults to data/borsapy_cache
-            use_mcp_fallback: Enable Borsa-MCP fallback for SSL/data issues.
-            mcp_endpoint: Optional MCP endpoint override.
-            timeout: Optional MCP HTTP timeout override.
             config_path: Optional path to borsapy YAML config.
             disk_cache: Optional pre-configured DiskCache instance.
                         If *None* and the disk_cache module is available a
@@ -107,18 +99,10 @@ class BorsapyClient:
         config = self._load_config(config_path)
         borsapy_config = config.get("borsapy", {}) if isinstance(config, dict) else {}
 
-        self.use_mcp_fallback = bool(
-            borsapy_config.get("use_mcp_fallback", use_mcp_fallback)
-        )
-        self._mcp_endpoint = str(borsapy_config.get("mcp_endpoint", mcp_endpoint or DEFAULT_MCP_ENDPOINT))
-        timeout_seconds = float(borsapy_config.get("timeout", timeout or 15.0))
-        self._session = httpx.Client(
-            timeout=timeout_seconds,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            },
-        )
+        timeout_seconds = float(borsapy_config.get("timeout", 15.0))
+        self._session = httpx.Client(timeout=timeout_seconds)
+
+        # Persistent disk cache
 
         cb_config = borsapy_config.get("circuit_breaker", {}) if isinstance(borsapy_config, dict) else {}
         self._circuit_breaker = CircuitBreaker(
@@ -134,12 +118,6 @@ class BorsapyClient:
             "backoff_factor": float(retry_policy.get("backoff_factor", 2)),
             "jitter": bool(retry_policy.get("jitter", True)),
         }
-
-        # MCP fallback client (stateless — shares the httpx session)
-        self._mcp_client = MCPFallbackClient(
-            mcp_endpoint=self._mcp_endpoint,
-            session=self._session,
-        )
 
         self.cache_dir = cache_dir or Path(__file__).parent.parent / "borsapy_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -426,6 +404,12 @@ class BorsapyClient:
 
         # --- API fetch for missing symbols --------------------------------
         if fetch_symbols:
+            logger.info(
+                "  ⬇️  Downloading %d symbols from TradingView "
+                "(this may take a while — ~%.0f min estimated)...",
+                len(fetch_symbols),
+                len(fetch_symbols) * 0.5 / 60,
+            )
             downloaded = self.batch_download(
                 fetch_symbols,
                 period=period,
@@ -433,6 +417,7 @@ class BorsapyClient:
                 start=start,
                 end=end,
                 group_by=group_by,
+                progress=True,
             )
             result = self.to_long_ohlcv(downloaded, add_is_suffix=add_is_suffix)
         else:
@@ -636,10 +621,8 @@ class BorsapyClient:
 
             if all(frame.empty for frame in statements.values()):
                 logger.warning(
-                    f"Empty financial statements from borsapy for {symbol}, trying MCP fallback."
+                    f"Empty financial statements from borsapy for {symbol}."
                 )
-                if self.use_mcp_fallback:
-                    statements = self._mcp_client.get_financial_statements(self._normalize_symbol(symbol))
             # Cache non-empty results
             if self._disk_cache is not None:
                 for sheet_name, df in statements.items():
@@ -650,18 +633,22 @@ class BorsapyClient:
             return statements
         except SSLError as exc:
             logger.warning(f"SSL error in borsapy financial statements for {symbol}: {exc}")
-            if self.use_mcp_fallback:
-                return self._mcp_client.get_financial_statements(self._normalize_symbol(symbol))
-            raise
+            return {
+                "balance_sheet": pd.DataFrame(),
+                "income_stmt": pd.DataFrame(),
+                "cash_flow": pd.DataFrame(),
+            }
         except Exception as exc:
             logger.error(f"Unexpected error in borsapy financial statements for {symbol}: {exc}")
-            if self.use_mcp_fallback:
-                return self._mcp_client.get_financial_statements(self._normalize_symbol(symbol))
-            raise
+            return {
+                "balance_sheet": pd.DataFrame(),
+                "income_stmt": pd.DataFrame(),
+                "cash_flow": pd.DataFrame(),
+            }
 
     def get_financial_ratios(self, symbol: str) -> pd.DataFrame:
         """
-        Get financial ratios with MCP fallback.
+        Get financial ratios.
 
         Args:
             symbol: Stock symbol (e.g., THYAO)
@@ -674,20 +661,14 @@ class BorsapyClient:
             ticker = self.get_ticker(symbol)
             ratios = self._coerce_dataframe(getattr(ticker, "financial_ratios", None))
             if ratios.empty:
-                logger.warning(f"Empty financial ratios from borsapy for {symbol}, trying MCP fallback.")
-                if self.use_mcp_fallback:
-                    return self._mcp_client.get_financial_ratios(self._normalize_symbol(symbol))
+                logger.warning(f"Empty financial ratios from borsapy for {symbol}.")
             return ratios
         except SSLError as exc:
             logger.warning(f"SSL error in borsapy financial ratios for {symbol}: {exc}")
-            if self.use_mcp_fallback:
-                return self._mcp_client.get_financial_ratios(self._normalize_symbol(symbol))
-            raise
+            return pd.DataFrame()
         except Exception as exc:
             logger.error(f"Unexpected error in borsapy financial ratios for {symbol}: {exc}")
-            if self.use_mcp_fallback:
-                return self._mcp_client.get_financial_ratios(self._normalize_symbol(symbol))
-            raise
+            return pd.DataFrame()
 
     def get_dividends(self, symbol: str) -> pd.DataFrame:
         """Get dividend history for a ticker."""
@@ -897,21 +878,15 @@ class BorsapyClient:
             else:
                 result = bp.screen_stocks(**merged_filters)
             result_df = self._coerce_dataframe(result)
-            if not result_df.empty or not self.use_mcp_fallback:
-                return result_df
-
-            logger.warning("Empty screening result from borsapy; trying MCP fallback.")
-            return self._mcp_client.screen_securities(template=template, filters=merged_filters)
+            if result_df.empty:
+                logger.warning("Empty screening result from borsapy.")
+            return result_df
         except SSLError as exc:
             logger.warning(f"SSL error in borsapy.screen_stocks: {exc}")
-            if self.use_mcp_fallback:
-                return self._mcp_client.screen_securities(template=template, filters=merged_filters)
-            raise
+            return pd.DataFrame()
         except Exception as exc:
             logger.error(f"Unexpected error in borsapy.screen_stocks: {exc}")
-            if self.use_mcp_fallback:
-                return self._mcp_client.screen_securities(template=template, filters=merged_filters)
-            raise
+            return pd.DataFrame()
 
     def technical_scan(
         self,
@@ -1127,7 +1102,6 @@ class BorsapyClient:
 # Convenience function for quick access
 def get_client(
     cache_dir: Optional[Path] = None,
-    use_mcp_fallback: bool = True,
 ) -> BorsapyClient:
     """Get a BorsapyClient instance."""
-    return BorsapyClient(cache_dir=cache_dir, use_mcp_fallback=use_mcp_fallback)
+    return BorsapyClient(cache_dir=cache_dir)
