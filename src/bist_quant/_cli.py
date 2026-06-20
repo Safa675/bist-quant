@@ -117,6 +117,80 @@ def cmd_api_serve(args) -> None:
     uvicorn.run(app, host=args.host, port=args.port)
 
 
+def cmd_fundamentals_fetch(args) -> None:
+    """Fetch and consolidate fundamental data from İş Yatırım."""
+    from .data_pipeline import FundamentalsPipeline
+
+    tickers = None
+    if args.tickers:
+        tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+
+    print("Fetching fundamental data from İş Yatırım...")
+    if tickers:
+        print(f"  Tickers: {len(tickers)} ({', '.join(tickers[:5])}{'...' if len(tickers) > 5 else ''})")
+    else:
+        print("  Tickers: all BIST")
+
+    pipeline = FundamentalsPipeline()
+    result = pipeline.run(
+        tickers=tickers,
+        force=args.force,
+        max_tickers=args.max_tickers,
+    )
+
+    print("\n✅ Fundamentals fetched and consolidated.")
+    print(f"  Output: {pipeline.paths.consolidated_parquet}")
+    if result.merged_bundle is not None:
+        print(f"  Tickers with data: {result.merged_bundle.merged_consolidated.index.get_level_values('ticker').nunique()}")
+    print(f"  Freshness passed: {result.freshness_passed}")
+    print(f"\nNext: run 'bist-quant fundamentals metrics' to derive ratios.")
+
+
+def cmd_fundamentals_metrics(args) -> None:
+    """Derive fundamental metrics (ratios) from consolidated statements."""
+    from .data_pipeline.calculate_metrics import compute_fundamental_metrics, write_fundamental_metrics
+
+    print("Computing fundamental metrics...")
+    df = compute_fundamental_metrics(data_dir=args.data_dir)
+    if df.empty:
+        print("\n❌ No metrics computed. Run 'bist-quant fundamentals fetch' first.")
+        sys.exit(1)
+
+    output_path = write_fundamental_metrics(df, data_dir=args.data_dir)
+    print(f"\n✅ Fundamental metrics written to: {output_path}")
+    print(f"   Tickers: {df.index.get_level_values('ticker').nunique()}")
+    print(f"   Observations: {len(df)}")
+
+
+def cmd_fundamentals_status(args) -> None:
+    """Show the status of fundamental data files."""
+    from .common.data_paths import get_data_paths
+
+    paths = get_data_paths()
+    pipeline_output = paths.fundamentals_file
+    metrics_file = paths.data_dir / "fundamental_metrics.parquet"
+    borsapy_consolidated = paths.borsapy_cache_dir / "financials_consolidated.parquet"
+
+    print("Fundamental Data Status")
+    print(f"  Data directory: {paths.data_dir}\n")
+
+    files = [
+        ("Pipeline output (consolidated)", pipeline_output),
+        ("borsapy_cache (consolidated)", borsapy_consolidated),
+        ("Derived metrics", metrics_file),
+    ]
+
+    for label, path in files:
+        if path.exists():
+            size_kb = path.stat().st_size / 1024
+            print(f"  [OK]   {label}: {path} ({size_kb:.0f} KB)")
+        else:
+            print(f"  [----] {label}: {path}")
+
+    print(f"\nTo fetch:  bist-quant fundamentals fetch")
+    print(f"To derive: bist-quant fundamentals metrics")
+
+
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -155,6 +229,23 @@ def main() -> None:
     api_serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
     api_serve.add_argument("--port", type=int, default=8001, help="Port to bind")
     api_serve.set_defaults(func=cmd_api_serve)
+
+    # Fundamentals data pipeline
+    fund_parser = subparsers.add_parser("fundamentals", help="Fundamental data pipeline")
+    fund_sub = fund_parser.add_subparsers(dest="fund_cmd")
+
+    fund_fetch = fund_sub.add_parser("fetch", help="Fetch & consolidate fundamentals from İş Yatırım")
+    fund_fetch.add_argument("--tickers", default=None, help="Comma-separated tickers (default: all BIST)")
+    fund_fetch.add_argument("--force", action="store_true", help="Force re-fetch even if cached")
+    fund_fetch.add_argument("--max-tickers", type=int, default=None, help="Limit number of tickers")
+    fund_fetch.set_defaults(func=cmd_fundamentals_fetch)
+
+    fund_metrics = fund_sub.add_parser("metrics", help="Derive fundamental metrics from statements")
+    fund_metrics.add_argument("--data-dir", default=None, help="Data directory override")
+    fund_metrics.set_defaults(func=cmd_fundamentals_metrics)
+
+    fund_status = fund_sub.add_parser("status", help="Show fundamentals data status")
+    fund_status.set_defaults(func=cmd_fundamentals_status)
 
     args = parser.parse_args()
 
