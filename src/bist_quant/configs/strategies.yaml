@@ -1,202 +1,138 @@
+# ---------------------------------------------------------------------------
+# Shared anchors – YAML << merge keys >> and aliases reduce 900+ lines to
+# the essential per-strategy differences while keeping every parsed value
+# identical to the pre-refactor file.
+# ---------------------------------------------------------------------------
+
+# --- Portfolio option anchors (7 variants) ---
+
+.standard_portfolio: &standard_portfolio
+  inverse_vol_lookback: 60
+  liquidity_quantile: 0.25
+  max_position_weight: 0.25
+  slippage_bps: 5.0
+  stop_loss_threshold: 0.15
+  target_downside_vol: 0.2
+  top_n: 20
+  use_inverse_vol_sizing: false
+  use_liquidity_filter: true
+  use_regime_filter: true
+  use_slippage: true
+  use_stop_loss: false
+  use_vol_targeting: false
+  vol_cap: 1.0
+  vol_floor: 0.1
+  vol_lookback: 63
+
+.inverse_vol_portfolio: &inverse_vol_portfolio
+  <<: *standard_portfolio
+  use_inverse_vol_sizing: true
+
+.higher_slippage_portfolio: &higher_slippage_portfolio
+  <<: *standard_portfolio
+  slippage_bps: 10.0
+
+.five_factor_custom: &five_factor_custom
+  <<: *standard_portfolio
+  max_position_weight: 0.2
+  top_n: 25
+  use_stop_loss: true
+
+.size_rotation_portfolio: &size_rotation_portfolio
+  <<: *standard_portfolio
+  small_cap_slippage_bps: 20.0
+  use_stop_loss: true
+
+.small_cap_momentum_portfolio: &small_cap_momentum_portfolio
+  <<: *standard_portfolio
+  slippage_bps: 8.0
+  top_n: 15
+
+.tactical_portfolio: &tactical_portfolio
+  <<: *inverse_vol_portfolio
+  use_tactical_overlay: true
+  tactical_overlay: paired_switching  # overridden per-strategy
+
+# --- Timeline anchors (3 variants) ---
+
+.timeline_2014: &timeline_2014
+  end_date: '2026-12-31'
+  start_date: '2014-01-01'
+
+.timeline_2017: &timeline_2017
+  end_date: '2026-12-31'
+  start_date: '2017-01-01'
+
+.timeline_2018: &timeline_2018
+  end_date: '2026-12-31'
+  start_date: '2018-01-01'
+
+# ---------------------------------------------------------------------------
+# Strategies
+# ---------------------------------------------------------------------------
 strategies:
   accrual:
     description: Accrual anomaly - companies with low accruals (high quality earnings)
       outperform
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   asset_growth:
     description: Asset growth effect - companies with low asset growth (conservative
       management) outperform
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   betting_against_beta:
     description: Betting against beta - low beta stocks outperform high beta stocks
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   breakout_value:
     description: Value stocks filtered by Donchian breakout - catches value turning
       points
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   consistent_momentum:
     description: 'Consistent momentum: winners in both short and medium-term periods'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   dividend_rotation:
     description: High dividend yield + low volatility + earnings growth during rate
       normalization
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: true
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *inverse_vol_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   donchian:
     description: 20-day Donchian Channel breakout strategy
     enabled: true
     parameters:
       lookback: 20
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   earnings_quality:
     description: 'Earnings quality: composite of accruals, ROE, CF/A, D/A'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2018-01-01'
+    timeline: *timeline_2018
+
   five_factor_rotation:
     axis_orthogonalization:
       enabled: true
@@ -211,639 +147,226 @@ strategies:
     description: 5-axis side rotation using standalone factor fundamentals for each
       axis
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.2
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 25
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: true
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *five_factor_custom
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
     walk_forward:
       enabled: true
       first_test_year: 2020
       last_test_year: 2026
       train_years: 3
+
   fscore_reversal:
     description: 'F-Score + Reversal: quality losers outperform junk winners'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2018-01-01'
+    timeline: *timeline_2018
+
   investment:
     description: Investment factor based on asset growth and capital expenditure patterns
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   low_volatility:
     description: 'Low volatility factor: long stable stocks, avoid volatile stocks'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   macro_hedge:
     description: Fortress balance sheet stocks (low debt, high cash, positive CF)
       for macro protection
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: true
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *inverse_vol_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   momentum:
     description: 12-1 momentum with downside volatility risk adjustment
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   momentum_asset_growth:
     description: 'Momentum + Asset Growth: momentum winners within high-growth stocks'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2018-01-01'
+    timeline: *timeline_2018
+
   momentum_reversal_volatility:
     description: 'Combined: momentum (40%) + reversal (30%) + low volatility (30%)'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   pairs_trading:
     description: 'Pairs trading: mean reversion on correlated stock pairs'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 10.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *higher_slippage_portfolio
     rebalance_frequency: weekly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   profitability:
     description: Profitability factor based on operating income and gross profit relative
       to total assets
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   quality_momentum:
     description: Momentum + Profitability composite - avoids junk rallies
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   quality_value:
     description: Value + Profitability composite - avoids value traps
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   residual_momentum:
     description: 'Residual momentum: market-adjusted stock-specific momentum'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   roa:
     description: ROA effect - companies with high return on assets outperform
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   sector_rotation:
     description: 'Sector rotation: overweight stocks in top-performing sectors'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   short_term_reversal:
     description: 'Short-term reversal: long weekly losers, avoid weekly winners'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 10.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *higher_slippage_portfolio
     rebalance_frequency: weekly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   size_rotation:
     description: Adaptive size rotation - tilts to winning size segment (small vs
       large caps)
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      small_cap_slippage_bps: 20.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: true
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *size_rotation_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   size_rotation_momentum:
     description: Pure momentum within winning size segment (small vs large caps)
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      small_cap_slippage_bps: 20.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: true
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *size_rotation_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   size_rotation_quality:
     description: Size rotation + momentum + profitability (most sophisticated)
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      small_cap_slippage_bps: 20.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: true
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *size_rotation_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   sma:
     description: 10/30 SMA crossover - bullish when short MA > long MA
     enabled: true
     parameters:
       long_period: 30
       short_period: 10
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   small_cap:
     description: Pure small cap factor - favors smaller market cap stocks
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   small_cap_momentum:
     description: Small cap + Momentum composite - captures discovery plays
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 8.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 15
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *small_cap_momentum_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   trend_following:
     description: 'Trend following: long stocks at/near all-time highs with momentum'
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
   trend_value:
     description: Value stocks filtered by SMA uptrend - avoids value traps
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   value:
     description: Composite value score from E/P, FCF/P, OCF/EV, S/P, EBITDA/EV ratios
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: quarterly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2017-01-01'
+    timeline: *timeline_2017
+
   xu100:
     description: XU100 index with regime awareness - benchmark for risk management
       value
     enabled: true
-    portfolio_options:
-      inverse_vol_lookback: 60
-      liquidity_quantile: 0.25
-      max_position_weight: 0.25
-      slippage_bps: 5.0
-      stop_loss_threshold: 0.15
-      target_downside_vol: 0.2
-      top_n: 20
-      use_inverse_vol_sizing: false
-      use_liquidity_filter: true
-      use_regime_filter: true
-      use_slippage: true
-      use_stop_loss: false
-      use_vol_targeting: false
-      vol_cap: 1.0
-      vol_floor: 0.1
-      vol_lookback: 63
+    portfolio_options: *standard_portfolio
     rebalance_frequency: monthly
-    timeline:
-      end_date: '2026-12-31'
-      start_date: '2014-01-01'
+    timeline: *timeline_2014
+
+  tactical_paired_switching:
+    description: >
+      Quarterly paired switching between XU100 and gold.
+      Holds the asset with higher 90-day return. Maps to
+      equity exposure toggle (1.0 = risk-on, 0.0 = defensive).
+    enabled: false
+    parameters:
+      lookback_days: 63
+      defensive_asset: gold
+    portfolio_options:
+      <<: *inverse_vol_portfolio
+      use_tactical_overlay: true
+      tactical_overlay: paired_switching
+    rebalance_frequency: quarterly
+    timeline: *timeline_2014
+
+  tactical_oil_equity:
+    description: >
+      Oil predicts equity returns for Turkey (oil importer).
+      Monthly OLS regression of equity returns on lagged oil returns.
+      Binary equity/cash allocation based on predicted return vs risk-free rate.
+    enabled: false
+    parameters:
+      min_observations: 13
+      oil_symbol: WTI
+      rf_fallback: 0.28
+    portfolio_options:
+      <<: *inverse_vol_portfolio
+      use_tactical_overlay: true
+      tactical_overlay: oil_equity
+    rebalance_frequency: monthly
+    timeline: *timeline_2014

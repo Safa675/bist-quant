@@ -6,8 +6,11 @@ Comprehensive portfolio construction and backtesting engine.
 
 Architecture:
 - Uses BIST modular infrastructure (Backtester, RiskManager, DataLoader, DataManager)
-- Preserves legacy factor workflow (`run_factor`, `run_all_factors`)
-- Adds Phase 4 portfolio APIs consolidated from bist-quant-ai
+- Provides ``run_backtest`` for DataFrame-level backtesting and
+  ``run_factor`` / ``run_all_factors`` for config-driven factor workflows.
+- Vol targeting and stop-loss are handled via ``RiskManager`` static helpers;
+  this module adds DataFrame-level position-scaled variants for use in the
+  full-portfolio backtest loop.
 """
 
 import argparse
@@ -79,15 +82,15 @@ def _as_regime_name(value: Any) -> str:
 
 
 def _deep_merge_dict(base: Dict[str, Any], override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    merged = dict(base)
+    """Deep-merge two config dicts. Thin wrapper around ``ConfigManager.deep_merge``.
+
+    Kept as a module-level function because it accepts ``Optional[override]``
+    (treating ``None`` as no-op) and returns a shallow-copied base in that case,
+    matching the original call-site expectations.
+    """
     if not override:
-        return merged
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge_dict(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
+        return dict(base)
+    return ConfigManager.deep_merge(base, override)
 
 
 _BASE_REGIME_ALLOCATIONS = {
@@ -166,33 +169,6 @@ class SignalResult:
 
     signals: pd.DataFrame
     metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-def apply_downside_vol_targeting(
-    returns: pd.Series,
-    target_vol: float = TARGET_DOWNSIDE_VOL,
-    lookback: int = VOL_LOOKBACK,
-    vol_floor: float = VOL_FLOOR,
-    vol_cap: float = VOL_CAP,
-) -> pd.Series:
-    """
-    Apply downside volatility targeting to scale returns.
-    """
-    if len(returns) < lookback:
-        return returns
-
-    min_periods = lookback // 2
-    negative_only = returns.where(returns < 0.0)
-    total_counts = returns.rolling(lookback, min_periods=min_periods).count()
-    negative_counts = negative_only.rolling(lookback, min_periods=1).count()
-    rolling_downside_vol = negative_only.rolling(lookback, min_periods=1).std() * np.sqrt(252)
-    rolling_downside_vol = rolling_downside_vol.where(
-        (total_counts >= min_periods) & (negative_counts > 2)
-    )
-
-    leverage = target_vol / rolling_downside_vol.shift(1)
-    leverage = leverage.clip(lower=vol_floor, upper=vol_cap).fillna(1.0)
-    return returns * leverage
 
 
 # ============================================================================
@@ -1135,14 +1111,6 @@ class PortfolioEngine:
     # -------------------------------------------------------------------------
     # Legacy Wrappers and Reporting
     # -------------------------------------------------------------------------
-    def _identify_quarterly_rebalance_days(self, trading_days: pd.DatetimeIndex) -> set:
-        """Backward-compatible wrapper around modular quarterly rebalance calendar."""
-        return identify_quarterly_rebalance_days(trading_days)
-
-    def _filter_by_liquidity(self, tickers, date, liquidity_quantile=LIQUIDITY_QUANTILE):
-        """Backward-compatible wrapper around RiskManager liquidity filter."""
-        return self.risk_manager.filter_by_liquidity(tickers, date, liquidity_quantile)
-
     def save_results(self, results, factor_name, output_dir=None):
         """Save backtest results via modular ReportGenerator."""
         self.report_generator.save_results(

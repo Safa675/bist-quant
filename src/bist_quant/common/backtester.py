@@ -264,6 +264,19 @@ class Backtester:
                 columns=self.close_df.columns,
             )
 
+        # -- Tactical overlay (optional) --
+        tactical_overlay = None
+        if opts.get("use_tactical_overlay") and opts.get("tactical_overlay"):
+            from bist_quant.strategies.base import build_tactical_overlay
+
+            overlay_name = opts["tactical_overlay"]
+            overlay_config = opts.get("tactical_overlay_config", {})
+            tactical_overlay = build_tactical_overlay(
+                name=overlay_name,
+                loader=self.loader,
+                config=overlay_config,
+            )
+
         position_manager = PositionManager()
         selection_service = RebalancingSelectionService(self.risk_manager)
         return_service = DailyReturnService(prep.open_fwd_ret)
@@ -286,6 +299,13 @@ class Backtester:
                 regime = fallback_regime
 
             allocation = regime_allocations.get(regime, 0.0) if opts["use_regime_filter"] else 1.0
+
+            # Apply tactical overlay as a second exposure multiplier
+            tactical_exposure: float = 1.0
+            if tactical_overlay is not None:
+                tactical_exposure = tactical_overlay.exposure(date)
+                allocation = allocation * tactical_exposure
+
             is_rebalance_day = date in prep.rebalance_days
 
             decision = selection_service.maybe_rebalance(
@@ -383,6 +403,7 @@ class Backtester:
                     "regime": regime,
                     "n_stocks": len(active_holdings),
                     "allocation": float(allocation),
+                    "tactical_exposure": float(tactical_exposure),
                 }
             )
             sanity_rows.append(
