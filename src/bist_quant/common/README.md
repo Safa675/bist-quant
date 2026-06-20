@@ -215,8 +215,11 @@ Essential shared utilities for signal construction:
 | `apply_lag(series, ticker)` | Apply Turkish reporting lag (Q4: 70 days, Q1–Q3: 40 days) |
 | `coerce_quarter_cols(df)` | Parse `YYYY/MM` column names to `DatetimeIndex` |
 | `SignalDataError` | Raised for missing/invalid signal data |
-| `normalize_ticker(s)` | Strip `.IS` suffix, uppercase |
 | `debug_log(msg)` | Logs only when `DEBUG` env var is set |
+
+The fundamental helpers (`sum_ttm`, `apply_lag`, `coerce_quarter_cols`, `pick_row`,
+`pick_row_from_sheet`, `get_consolidated_sheet`, `_turkish_match`) live in
+`fundamental_utils.py` and are re-exported here for backwards compatibility.
 
 ---
 

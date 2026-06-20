@@ -204,8 +204,8 @@ class DataManager:
             if "Date" in prices.columns:
                 prices["Date"] = pd.to_datetime(prices["Date"], errors="coerce").dt.floor("D")
             # Cache inside DataLoader so other methods can reuse it
-            if self.loader._prices is None:
-                self.loader._prices = prices
+            if self.loader.price_loader.prices is None:
+                self.loader.price_loader.prices = prices
             logger.info(
                 "  ✅ Loaded %d price records from consolidated panel",
                 len(prices),
