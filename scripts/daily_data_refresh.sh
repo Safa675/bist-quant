@@ -55,38 +55,47 @@ log INFO "BIST QUANT DAILY DATA REFRESH — $(date '+%Y-%m-%d %H:%M %Z')"
 log INFO "════════════════════════════════════════════════════════════"
 
 # Step 1: Update BIST stock prices + XU100 + XAU/TRY (incremental)
-log INFO "[1/4] Updating BIST stock prices, XU100, and XAU/TRY..."
+log INFO "[1/5] Updating BIST stock prices, XU100, and XAU/TRY..."
 if python -m bist_quant.clients.update_prices --source auto 2>&1 | tee -a "${LOG_FILE}"; then
-  log INFO "[1/4] ✓ Price update complete"
+  log INFO "[1/5] ✓ Price update complete"
 else
-  log ERROR "[1/4] ✗ Price update FAILED (exit $?)"
+  log ERROR "[1/5] ✗ Price update FAILED (exit $?)"
   FAILURES=$((FAILURES + 1))
 fi
 
 # Step 2: Fetch index data (XU030, XU100, XUTUM full history refresh)
-log INFO "[2/4] Refreshing index historical data..."
+log INFO "[2/5] Refreshing index historical data..."
 if python -m bist_quant.fetchers.fetch_indices --data-dir "${ROOT_DIR}/data" 2>&1 | tee -a "${LOG_FILE}"; then
-  log INFO "[2/4] ✓ Index data refresh complete"
+  log INFO "[2/5] ✓ Index data refresh complete"
 else
-  log ERROR "[2/4] ✗ Index data refresh FAILED (exit $?)"
+  log ERROR "[2/5] ✗ Index data refresh FAILED (exit $?)"
   FAILURES=$((FAILURES + 1))
 fi
 
 # Step 3: Fetch gold prices (XAU/TRY cache refresh)
-log INFO "[3/4] Refreshing gold price cache..."
+log INFO "[3/5] Refreshing gold price cache..."
 if python -m bist_quant.fetchers.fetch_gold_prices 2>&1 | tee -a "${LOG_FILE}"; then
-  log INFO "[3/4] ✓ Gold price refresh complete"
+  log INFO "[3/5] ✓ Gold price refresh complete"
 else
-  log ERROR "[3/4] ✗ Gold price refresh FAILED (exit $?)"
+  log ERROR "[3/5] ✗ Gold price refresh FAILED (exit $?)"
   FAILURES=$((FAILURES + 1))
 fi
 
 # Step 4: Warm borsapy panel cache (close_panel, prices_panel)
-log INFO "[4/4] Warming borsapy panel cache (XUTUM universe)..."
+log INFO "[4/5] Warming borsapy panel cache (XUTUM universe)..."
 if python -m bist_quant.cli.cache_cli warm --index XUTUM --period 5y 2>&1 | tee -a "${LOG_FILE}"; then
-  log INFO "[4/4] ✓ Panel cache warm complete"
+  log INFO "[4/5] ✓ Panel cache warm complete"
 else
-  log ERROR "[4/4] ✗ Panel cache warm FAILED (exit $?)"
+  log ERROR "[4/5] ✗ Panel cache warm FAILED (exit $?)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Step 5: Derive fundamental metrics from consolidated statements
+log INFO "[5/5] Calculating fundamental metrics (ratios)..."
+if python -m bist_quant.data_pipeline.calculate_metrics 2>&1 | tee -a "${LOG_FILE}"; then
+  log INFO "[5/5] ✓ Fundamental metrics complete"
+else
+  log ERROR "[5/5] ✗ Fundamental metrics FAILED (exit $?) — run 'bist-quant fundamentals fetch' first"
   FAILURES=$((FAILURES + 1))
 fi
 
@@ -96,7 +105,7 @@ log INFO "═══════════════════════�
 if [[ "${FAILURES}" -eq 0 ]]; then
   log INFO "ALL REFRESH STEPS COMPLETED SUCCESSFULLY"
 else
-  log ERROR "${FAILURES}/4 STEPS FAILED — review ${LOG_FILE}"
+  log ERROR "${FAILURES}/5 STEPS FAILED — review ${LOG_FILE}"
 fi
 log INFO "════════════════════════════════════════════════════════════"
 
