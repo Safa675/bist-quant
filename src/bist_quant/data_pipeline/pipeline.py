@@ -76,24 +76,46 @@ def compute_default_periods(count: int = 5, as_of: datetime | None = None) -> tu
     return tuple(periods)
 
 
-def build_default_paths(base_dir: Path | None = None) -> PipelinePaths:
-    """Create default path contract for the fundamentals reliability pipeline."""
-    root = (base_dir or Path(__file__).resolve().parents[3]).resolve()
-    data_dir = root / "data"
-    fundamentals_dir = data_dir / "fundamentals"
-    log_dir = root / "logs"
+def build_default_paths(
+    base_dir: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> PipelinePaths:
+    """Create default path contract for the fundamentals reliability pipeline.
+
+    Path resolution order (matches ``DataPaths`` / ``runtime.py`` used by the
+    loaders so the pipeline writes to the same directory the loaders read):
+
+    1. Explicit ``data_dir`` argument (caller knows exactly where to put data).
+    2. Explicit ``base_dir`` argument (legacy benchmark usage — resolves to
+       ``base_dir / data``).
+    3. ``$BIST_DATA_DIR`` environment variable (if it exists).
+    4. XDG default: ``~/.local/share/bist-quant/data``.
+    """
+    # Resolve base data_dir first.
+    if data_dir is not None:
+        resolved_data_dir = Path(data_dir).resolve()
+    elif base_dir is not None:
+        resolved_data_dir = Path(base_dir).resolve() / "data"
+    else:
+        from bist_quant.runtime import default_data_dir
+        resolved_data_dir = default_data_dir(create=True)
+
+    resolved_data_dir.mkdir(parents=True, exist_ok=True)
+    fundamentals_dir = resolved_data_dir / "fundamentals"
+    log_dir = resolved_data_dir / "logs"
     provenance_dir = fundamentals_dir / "provenance"
     return PipelinePaths(
-        base_dir=root,
-        data_dir=data_dir,
+        base_dir=resolved_data_dir.parent,
+        data_dir=resolved_data_dir,
         fundamentals_dir=fundamentals_dir,
         raw_dir=fundamentals_dir / "raw",
         normalized_json_dir=fundamentals_dir / "normalized_json",
         log_dir=log_dir,
-        consolidated_parquet=data_dir / "fundamental_data_consolidated.parquet",
+        consolidated_parquet=resolved_data_dir / "fundamental_data_consolidated.parquet",
         normalized_parquet=fundamentals_dir / "normalized.parquet",
         normalized_csv=fundamentals_dir / "normalized.csv",
-        staleness_weights_json=data_dir / "fundamental_staleness_weights.json",
+        staleness_weights_json=resolved_data_dir / "fundamental_staleness_weights.json",
         freshness_report_csv=log_dir / "staleness_diagnostics.csv",
         quality_metrics_json=log_dir / "fundamentals_quality_metrics.json",
         provenance_dir=provenance_dir,

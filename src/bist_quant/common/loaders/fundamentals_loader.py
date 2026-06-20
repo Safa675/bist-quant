@@ -149,10 +149,28 @@ class FundamentalsLoader:
         return required.issubset(names)
 
     def _load_consolidated_fundamentals(self) -> pd.DataFrame | None:
-        """Load consolidated fundamentals directly from borsapy_cache, building on the fly if needed."""
-        consolidated_path = self.paths.borsapy_cache_dir / "financials_consolidated.parquet"
+        """Load consolidated fundamentals from the pipeline output or borsapy_cache.
 
-        # 1. Try to load pre-built consolidated form
+        Resolution order:
+        0. ``data_dir/fundamental_data_consolidated.parquet`` — the
+           ``FundamentalsPipeline`` output (preferred).
+        1. ``borsapy_cache/financials_consolidated.parquet`` — pre-built from
+           ``cache_cli warm``.
+        2. Build on the fly from ``borsapy_cache/financials/<ticker>/*.parquet``.
+        """
+        # 0. Try the pipeline's consolidated output first.
+        pipeline_path = self.paths.fundamentals_file
+        if pipeline_path.exists():
+            try:
+                frame = pd.read_parquet(pipeline_path)
+                if self._is_fundamentals_panel(frame):
+                    logger.info("  📦 Loaded consolidated fundamentals from pipeline output")
+                    return frame
+            except Exception as e:
+                logger.warning(f"  ⚠️  Failed to read pipeline output {pipeline_path}: {e}")
+
+        # 1. Try borsapy_cache pre-built consolidated form.
+        consolidated_path = self.paths.borsapy_cache_dir / "financials_consolidated.parquet"
         if consolidated_path.exists():
             try:
                 frame = pd.read_parquet(consolidated_path)
