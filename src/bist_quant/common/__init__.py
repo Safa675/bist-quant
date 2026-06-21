@@ -120,9 +120,15 @@ except Exception:
 
 # Portfolio analytics
 try:
-    from .portfolio_analytics import PortfolioAnalytics, PortfolioAnalyticsAdapter, RiskMetrics
+    from .portfolio_analytics import (
+        MultiAssetPortfolioAnalytics,
+        PortfolioAnalyticsAdapter,
+        RiskMetrics,
+    )
+    PortfolioAnalytics = MultiAssetPortfolioAnalytics  # backward-compat alias
 except Exception:
-    PortfolioAnalytics = None
+    MultiAssetPortfolioAnalytics = None
+    PortfolioAnalytics = None  # backward-compat alias
     PortfolioAnalyticsAdapter = None
     RiskMetrics = None
 
@@ -162,6 +168,7 @@ __all__ = [
     "run_backtester_benchmark",
     "run_pipeline_benchmark",
     "run_benchmark_suite",
+    "MultiAssetPortfolioAnalytics",
     "PortfolioAnalytics",
     "PortfolioAnalyticsAdapter",
     "RiskMetrics",

@@ -34,7 +34,7 @@ class RiskMetrics:
     information_ratio: float
 
 
-class PortfolioAnalytics:
+class MultiAssetPortfolioAnalytics:
     """Enhanced portfolio analytics with support for multiple asset classes."""
 
     def __init__(self):

@@ -22,7 +22,7 @@ common/
 ├── cache_config.py        # TTL configuration for all cache categories
 ├── staleness.py           # Per-ticker fundamental staleness computation + decay weights
 ├── utils.py               # Signal panel validation, TTM computation, Turkish locale helpers
-├── portfolio_analytics.py # Multi-asset async analytics (stocks, funds, crypto, FX, US)
+├── portfolio_analytics.py # Multi-asset async analytics (MultiAssetPortfolioAnalytics)
 ├── market_cap_utils.py    # Market-cap size bucket classification (large/mid/small cap)
 ├── enums.py               # Shared enumerations (RegimeLabel)
 └── report_generator.py    # Parallel CSV backtest artifact writer
