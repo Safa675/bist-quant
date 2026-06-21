@@ -22,6 +22,8 @@ from bist_quant.analytics.professional import (
     simulate_execution_with_slippage, run_compliance_rule_engine,
     evaluate_alert_conditions, group_alerts, build_escalation_plan,
     build_market_intelligence_snapshot, SentimentSummary,
+    build_vwap_schedule, schedule_report_runs, build_client_report_template,
+    monitor_position_limits, detect_user_activity_anomalies,
     run_performance_snapshot,
 )
 
@@ -213,6 +215,21 @@ class TestExecution:
         r = simulate_execution_with_slippage(80, "buy", levels, 100)
         assert r.filled_qty == 80
         assert r.slippage_bps >= 0
+    def test_vwap(self):
+        r = build_vwap_schedule(1000, [100, 200, 300, 400])
+        assert len(r) == 4
+        assert sum(s.quantity for s in r) == 1000
+
+class TestReportingExtras:
+    def test_schedule_report_runs(self):
+        schedules = [{"report_id": "r1", "cadence": "daily", "hour_utc": 8, "minute_utc": 0}]
+        r = schedule_report_runs(schedules, "2024-01-01T10:00:00")
+        assert r[0]["report_id"] == "r1"
+        assert "next_run_at" in r[0]
+    def test_client_report_template(self):
+        r = build_client_report_template("institutional")
+        assert r["template"] == "institutional"
+        assert len(r["sections"]) >= 3
 
 class TestCompliance:
     def test_basic(self):
@@ -221,6 +238,16 @@ class TestCompliance:
         r = run_compliance_rule_engine(rec, rules)
         assert len(r) == 1
         assert r[0].severity == "warning"
+    def test_position_limits(self):
+        limits = [{"value": 15, "limit": 12}, {"value": 8, "limit": 10}]
+        r = monitor_position_limits(limits)
+        assert len(r) == 1
+        assert r[0]["value"] == 15
+    def test_activity_anomalies(self):
+        events = [{"user_id": f"u{i}"} for i in range(10) for _ in range(2)]
+        events += [{"user_id": "u99"} for _ in range(20)]
+        r = detect_user_activity_anomalies(events)
+        assert any(x["user_id"] == "u99" for x in r)
 
 class TestAlerts:
     def test_evaluate(self):
