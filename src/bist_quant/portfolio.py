@@ -246,6 +246,8 @@ class PortfolioEngine:
         self.regime_model_dir = resolved_regime_model_dir
         self.start_date = pd.Timestamp(start_date)
         self.end_date = pd.Timestamp(end_date)
+        # When True, engine-level start/end dates override strategy YAML timelines.
+        self._user_timeline_override = False
         self.options = _deep_merge_dict(DEFAULT_PORTFOLIO_OPTIONS, options)
 
         # Load signal configurations
@@ -443,8 +445,20 @@ class PortfolioEngine:
 
         custom_start = timeline.get("start_date")
         custom_end = timeline.get("end_date")
-        factor_start_date = pd.Timestamp(custom_start) if custom_start else self.start_date
-        factor_end_date = pd.Timestamp(custom_end) if custom_end else self.end_date
+
+        # Engine-level start/end dates (from CLI --start-date / --end-date or
+        # PortfolioEngine constructor) take priority over strategy YAML timeline
+        # so the user can override the backtest period from the command line.
+        factor_start_date = (
+            self.start_date
+            if self._user_timeline_override
+            else (pd.Timestamp(custom_start) if custom_start else self.start_date)
+        )
+        factor_end_date = (
+            self.end_date
+            if self._user_timeline_override
+            else (pd.Timestamp(custom_end) if custom_end else self.end_date)
+        )
 
         walk_forward_cfg = config.get("walk_forward", {})
         if not isinstance(walk_forward_cfg, dict):
@@ -1302,15 +1316,30 @@ def main():
     )
 
     engine = PortfolioEngine(data_dir, regime_model_dir, args.start_date, args.end_date)
+    # CLI date flags override strategy YAML timelines
+    engine._user_timeline_override = True
 
-    # Check if regime model exists; disable regime filter gracefully if not.
-    regime_exists = any(p.exists() and any(p.iterdir()) for p in [regime_model_dir] if p.exists())
-    if not regime_exists:
+    # Check if a regime model actually exists (with data, not just empty dirs).
+    # If not, disable the regime filter so signals aren't all dumped into XAU.
+    from bist_quant.common.loaders.regime_loader import REGIME_DIR_CANDIDATES
+
+    all_regime_candidates = [regime_model_dir] + list(REGIME_DIR_CANDIDATES)
+    regime_has_data = any(
+        any(d.glob("regime_features.csv") for d in [p, p / "outputs"] if d.exists())
+        for p in all_regime_candidates
+    )
+    if not regime_has_data:
         logger.warning(
-            "No regime model found — disabling regime filter. "
+            "No regime model found (regime_features.csv missing) — "
+            "disabling regime filter so signals select stocks normally. "
             "Run the regime pipeline to enable regime-aware allocation."
         )
         engine.options["use_regime_filter"] = False
+        # Also override in every strategy config, since strategy-level
+        # portfolio_options would otherwise re-enable the filter.
+        for cfg in engine.signal_configs.values():
+            if "portfolio_options" in cfg:
+                cfg["portfolio_options"]["use_regime_filter"] = False
 
     engine.load_all_data()
 
