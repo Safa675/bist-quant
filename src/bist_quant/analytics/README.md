@@ -8,11 +8,26 @@ Provides all quantitative performance analytics for portfolios and strategies. S
 
 ```
 analytics/
-├── core_metrics.py        # Pure-Python (no NumPy) analytics primitives
-├── portfolio_metrics.py   # pandas/NumPy standalone functions + PortfolioAnalytics class
-├── advanced.py            # GARCH, Kelly sizing, walk-forward, MPT, regime backtesting
-└── professional.py        # Professional trading analytics (options, futures, compliance, tax)
+├── _shared.py               # Shared helpers (clamp, rounding, RNG noise, EMA, type aliases)
+├── core_metrics.py          # Pure-Python (no NumPy) analytics primitives — frontend parity layer
+├── portfolio_metrics.py     # pandas/NumPy standalone functions + PortfolioAnalytics class
+├── advanced.py              # Thin re-export facade composing the split sub-modules below
+├── professional.py          # Professional trading analytics (options, futures, compliance, tax)
+├── volatility.py            # GARCH / EWMA volatility forecasting + proxy-asset construction
+├── position_sizing.py       # Kelly, fixed-fractional, optimal-f, correlation-adjusted sizing
+├── portfolio_construction.py # MPT / risk-parity / min-var / ERC / factor-based construction
+├── parameter_optimization.py # Walk-forward + parameter-sensitivity heatmaps
+├── regime_backtest.py       # MA strategy with regime filter backtesting
+├── risk_metrics.py          # Strategy significance testing (t-stat + bootstrap p-value)
+├── attribution.py           # Portfolio return attribution + risk decomposition
+├── charting.py              # Volume profile, Renko, Point & Figure chart primitives
+└── signals.py               # Indicator-based signal helpers
 ```
+
+`advanced.py` re-exports the public API of `volatility`, `position_sizing`,
+`portfolio_construction`, `parameter_optimization`, `regime_backtest`,
+`risk_metrics`, `attribution`, `charting`, and `signals` — it is now a
+composition facade, not the implementation home of those features.
 
 ---
 
@@ -78,7 +93,7 @@ Pandas/NumPy-based layer with richer API. Preferred for backend-only code paths.
 `PortfolioAnalytics` wraps all the above with lazy metric caching. Constructors:
 - `PortfolioAnalytics(returns)` — direct returns Series
 - `PortfolioAnalytics.from_holdings(holdings, prices)` — compute returns from holdings
-- `PortfolioAnalytics.from_returns(returns)` — alias
+- `PortfolioAnalytics.from_equity_curve(equity)` — compute returns from an equity curve
 
 **Rate coercion:** The `_coerce_rate_to_decimal()` helper automatically converts percent notation (e.g. `38.0`) to decimal (`0.38`) so callers can pass rates in either form.
 
@@ -86,23 +101,13 @@ Pandas/NumPy-based layer with richer API. Preferred for backend-only code paths.
 
 ### `advanced.py` — Advanced Quantitative Analytics
 
-Built on `core_metrics` primitives (imports all math from there — **no duplicated math**).
-
-**Key capabilities:**
+Thin composition facade. Re-exports the implementations living in the split
+sub-modules (`volatility`, `position_sizing`, `portfolio_construction`,
+`parameter_optimization`, `regime_backtest`, `risk_metrics`, `attribution`,
+`charting`, `signals`) and adds one new composite:
 
 | Function | Description |
 |---|---|
-| `build_garch_volatility_forecast(returns)` | EWMA/GARCH(1,1) with regime classification |
-| `compute_kelly_fraction_percent(returns)` | Full Kelly criterion sizing |
-| `compute_fixed_fractional_notional(...)` | Fixed-fractional position sizing |
-| `compute_optimal_f(returns)` | Ralph Vince's optimal-f |
-| `compute_correlation_adjusted_sizing(...)` | Penalize correlated concentration |
-| `suggest_cross_asset_hedges(corr_matrix)` | Cross-asset hedge suggestions |
-| `build_parameter_sensitivity_heatmap(...)` | MA fast/slow parameter grid search |
-| `build_walk_forward_parameter_optimization(...)` | Walk-forward MA optimization |
-| `build_portfolio_construction(...)` | MPT / risk-parity / min-var / ERC / factor-based construction |
-| `run_regime_aware_backtest(...)` | MA strategy with regime filter |
-| `test_strategy_significance(returns)` | t-stat + bootstrap p-value |
 | `build_backtest_integration_diagnostics(...)` | Cost-adjusted + MC + regime + significance combined report |
 
 ---

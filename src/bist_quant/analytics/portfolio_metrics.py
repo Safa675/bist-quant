@@ -13,26 +13,22 @@ Comprehensive portfolio risk and performance metrics including:
 - Value at Risk (VaR)
 - Expected Shortfall (CVaR)
 
-Can use either:
-1. Local calculations with price data (primary)
-2. Borsapy Portfolio class (when available)
-
 Usage:
     from bist_quant.analytics import PortfolioAnalytics
-
-    # From returns series
-    analytics = PortfolioAnalytics.from_returns(portfolio_returns, benchmark_returns)
-    metrics = analytics.get_all_metrics()
 
     # From holdings
     analytics = PortfolioAnalytics.from_holdings(
         holdings={"THYAO": 100, "AKBNK": 200},
         close_df=price_data
     )
+
+    # From an equity curve
+    analytics = PortfolioAnalytics.from_equity_curve(equity_series)
+    metrics = analytics.get_all_metrics()
 """
 
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -42,14 +38,6 @@ from bist_quant.clients.fixed_income_provider import (
     DEFAULT_FALLBACK_RISK_FREE_RATE,
     FixedIncomeProvider,
 )
-
-# Check borsapy availability
-try:
-    import borsapy as bp
-    BORSAPY_AVAILABLE = True
-except ImportError:
-    BORSAPY_AVAILABLE = False
-    bp = None
 
 
 # =============================================================================
