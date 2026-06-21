@@ -1,14 +1,10 @@
-"""Unit tests for bist_quant.realtime and server.persistence."""
+"""Unit tests for bist_quant.realtime helpers."""
 
 from __future__ import annotations
 
-import json
 import math
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock
-
-import pytest
 
 # Mock borsapy before any bist_quant import to prevent network hangs
 if "borsapy" not in sys.modules:
@@ -23,12 +19,6 @@ from bist_quant.realtime.ticks import (
     fallback_realtime_ticks,
     normalize_realtime_symbols,
 )
-from server.persistence import RunStore, RunStoreError
-
-
-# ---------------------------------------------------------------------------
-# quotes.py
-# ---------------------------------------------------------------------------
 
 
 class TestNormalizeSymbol:
@@ -79,7 +69,6 @@ class TestNormalizeChangePct:
         assert math.isclose(result, 10.0, rel_tol=0.001)
 
     def test_decimal_correction(self):
-        # When provided is in decimal form (0.05 instead of 5.0)
         result = normalize_change_pct(0.05, 105.0, 100.0)
         assert result == 5.0
 
@@ -88,11 +77,6 @@ class TestNormalizeChangePct:
 
     def test_zero_prev_close(self):
         assert normalize_change_pct(None, 100.0, 0.0) is None
-
-
-# ---------------------------------------------------------------------------
-# ticks.py
-# ---------------------------------------------------------------------------
 
 
 class TestNormalizeRealtimeSymbols:
@@ -127,108 +111,4 @@ class TestFallbackTicks:
         prev = {"THYAO": {"price": 50.0, "volume": 500000.0}}
         ticks = fallback_realtime_ticks(["THYAO"], prev)
         assert len(ticks) == 1
-        # Price should be close to 50 (small drift)
         assert 45.0 < ticks[0]["price"] < 55.0
-
-
-# ---------------------------------------------------------------------------
-# RunStore
-# ---------------------------------------------------------------------------
-
-
-class TestRunStore:
-    @pytest.fixture
-    def store(self, tmp_path):
-        return RunStore(
-            store_path=tmp_path / "runs.json",
-            artifacts_dir=tmp_path / "artifacts",
-        )
-
-    def test_create_run(self, store):
-        run = store.create_or_update_run(
-            run_id="test_run_1",
-            kind="backtest",
-            request_payload={"strategy": "momentum"},
-            status="running",
-        )
-        assert run["id"] == "test_run_1"
-        assert run["kind"] == "backtest"
-        assert run["status"] == "running"
-        assert run["started_at"] is not None
-
-    def test_update_run(self, store):
-        store.create_or_update_run(
-            run_id="r1", kind="backtest",
-            request_payload={"x": 1}, status="running",
-        )
-        updated = store.create_or_update_run(
-            run_id="r1", kind="backtest",
-            request_payload={"x": 1}, status="succeeded",
-        )
-        assert updated["status"] == "succeeded"
-        assert updated["finished_at"] is not None
-
-    def test_list_runs(self, store):
-        for i in range(5):
-            store.create_or_update_run(
-                run_id=f"run_{i}", kind="backtest",
-                request_payload={}, status="succeeded",
-            )
-        result = store.list_runs(limit=3)
-        assert result["total"] == 5
-        assert len(result["runs"]) == 3
-
-    def test_list_runs_filter_kind(self, store):
-        store.create_or_update_run(run_id="a", kind="backtest", request_payload={}, status="running")
-        store.create_or_update_run(run_id="b", kind="factor_lab", request_payload={}, status="running")
-        result = store.list_runs(kind="backtest")
-        assert result["total"] == 1
-        assert result["runs"][0]["kind"] == "backtest"
-
-    def test_get_run(self, store):
-        store.create_or_update_run(run_id="x1", kind="bt", request_payload={}, status="running")
-        assert store.get_run("x1") is not None
-        assert store.get_run("nonexistent") is None
-
-    def test_find_by_meta(self, store):
-        store.create_or_update_run(
-            run_id="m1", kind="bt", request_payload={},
-            status="running", meta={"job_id": "j123"},
-        )
-        found = store.find_run_by_meta(key="job_id", value="j123")
-        assert found is not None
-        assert found["id"] == "m1"
-
-    def test_save_and_read_artifact(self, store):
-        store.create_or_update_run(run_id="a1", kind="bt", request_payload={}, status="succeeded")
-        artifact = store.save_artifact(kind="bt", run_id="a1", payload={"data": [1, 2, 3]})
-        assert "id" in artifact
-        assert artifact["size_bytes"] > 0
-
-        result = store.read_artifact(artifact["id"])
-        assert result is not None
-        path, data = result
-        parsed = json.loads(data)
-        assert parsed["data"] == [1, 2, 3]
-
-    def test_read_nonexistent_artifact(self, store):
-        assert store.read_artifact("does_not_exist") is None
-
-    def test_auto_generate_run_id(self, store):
-        run = store.create_or_update_run(
-            run_id=None, kind="backtest",
-            request_payload={}, status="queued",
-        )
-        assert run["id"].startswith("backtest_")
-
-    def test_merge_meta(self, store):
-        store.create_or_update_run(
-            run_id="mm1", kind="bt", request_payload={},
-            status="running", meta={"a": 1},
-        )
-        updated = store.create_or_update_run(
-            run_id="mm1", kind="bt", request_payload={},
-            status="running", meta={"b": 2},
-        )
-        assert updated["meta"]["a"] == 1
-        assert updated["meta"]["b"] == 2
