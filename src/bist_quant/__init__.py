@@ -11,7 +11,7 @@ from importlib import import_module
 from typing import Any
 import warnings
 
-__version__ = "0.3.3"
+__version__ = "0.5.0"
 __author__ = "Safa Öksüz"
 
 # =============================================================================
