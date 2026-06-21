@@ -87,7 +87,7 @@ python -m bist_quant.clients.update_prices
 
 ## Development
 
-Contributor setup lives in `CONTRIBUTING.md`. App-stack deployment notes remain in `deploy/README.md`, but they are out of scope for the published library package.
+Contributor setup lives in `CONTRIBUTING.md`.
 
 ## License
 
