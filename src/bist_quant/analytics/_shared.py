@@ -9,6 +9,7 @@ price-to-returns, EMA, timeframe grouping) without a circular import on
 
 from __future__ import annotations
 
+import datetime
 import math
 from dataclasses import dataclass
 from typing import Literal
@@ -78,6 +79,24 @@ def _rolling_std(values: list[float], end_index: int, window: int) -> float:
 def _make_deterministic_noise(seed: int, index: int) -> float:
     raw = ((seed * 31 + index * 17) % 97) - 48
     return raw / 12_000
+
+
+def _compare(left: float, comp: str, right: float) -> bool:
+    if not math.isfinite(left) or not math.isfinite(right):
+        return False
+    if comp == ">": return left > right
+    if comp == ">=": return left >= right
+    if comp == "<": return left < right
+    if comp == "<=": return left <= right
+    if comp == "==": return left == right
+    return left != right
+
+
+def _parse_date(s: str) -> datetime.datetime:
+    try:
+        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return datetime.datetime(1970, 1, 1)
 
 
 def _price_to_returns(points: list[PricePoint]) -> list[SeriesPoint]:
@@ -158,6 +177,8 @@ __all__ = [
     "_normalize_weights",
     "_rolling_std",
     "_make_deterministic_noise",
+    "_compare",
+    "_parse_date",
     "_price_to_returns",
     "_build_ma_strategy_returns",
     "_ema",
