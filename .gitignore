@@ -21,10 +21,6 @@ env/
 *.swo
 *~
 
-# ===== DATA EXCLUSIONS =====
-
-data
-
 # ===== GENERATED OUTPUT EXCLUSIONS =====
 
 outputs
