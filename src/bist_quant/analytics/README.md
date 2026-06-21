@@ -12,7 +12,12 @@ analytics/
 ├── core_metrics.py          # Pure-Python (no NumPy) analytics primitives — frontend parity layer
 ├── portfolio_metrics.py     # pandas/NumPy standalone functions + PortfolioAnalytics class
 ├── advanced.py              # Thin re-export facade composing the split sub-modules below
-├── professional.py          # Professional trading analytics (options, futures, compliance, tax)
+├── professional/            # Professional trading analytics package (see sub-modules below)
+│   ├── trading.py           # Crypto/forex/options/futures sizing, fund screening, spreads
+│   ├── risk.py              # Strategy risk, stress tests, factor exposure, optimization
+│   ├── reporting.py         # Sentiment, benchmarks, attribution, tax, market intelligence
+│   ├── execution.py         # Iceberg/TWAP/VWAP, bracket orders, slippage simulation
+│   └── compliance.py        # Compliance rules, position limits, alerting, escalation
 ├── volatility.py            # GARCH / EWMA volatility forecasting + proxy-asset construction
 ├── position_sizing.py       # Kelly, fixed-fractional, optimal-f, correlation-adjusted sizing
 ├── portfolio_construction.py # MPT / risk-parity / min-var / ERC / factor-based construction
@@ -112,22 +117,22 @@ sub-modules (`volatility`, `position_sizing`, `portfolio_construction`,
 
 ---
 
-### `professional.py` — Professional Trading & Compliance Analytics
+### `professional/` — Professional Trading & Compliance Analytics
 
-Ported from TypeScript. No external scientific libraries — pure math.
+Thin composition facade (`professional/__init__.py`) re-exporting five domain
+sub-modules. Ported from TypeScript. No external scientific libraries — pure
+math. Shared helpers `_compare()` and `_parse_date()` live in `_shared.py`.
 
-**Key areas covered:**
-
-| Area | Example functions |
+| Sub-module | Example functions |
 |---|---|
-| Trade planning | `build_crypto_trade_plan()`, `compute_forex_pip_value()`, `compute_option_greeks()` |
-| Options | Black–Scholes Greeks, implied vol (internal implementation via `_normal_cdf`) |
-| Futures | `compute_futures_margin()` |
-| Fund screening | `screen_funds()` — multi-factor ETF/fund scoring |
-| Risk monitoring | `evaluate_strategy_risk()`, `run_portfolio_stress_test()`, `monitor_liquidity_risk()`, `detect_concentration_risk()` |
-| Portfolio optimization | `optimize_constrained_portfolio()` — randomized search with turnover constraint |
-| Factor exposure | `build_factor_exposure_model()` — OLS regression on factor returns |
-| Compliance | `check_compliance()`, `generate_alerts()`, `calculate_tax()` |
+| `trading` | `build_crypto_trade_plan()`, `compute_forex_pip_value()`, `compute_option_greeks()`, `screen_funds()` |
+| `risk` | `evaluate_strategy_risk()`, `run_portfolio_stress_test()`, `optimize_constrained_portfolio()`, `build_factor_exposure_model()` |
+| `reporting` | `analyze_sentiment()`, `compare_benchmarks()`, `build_tax_report()`, `build_market_intelligence_snapshot()` |
+| `execution` | `create_iceberg_slices()`, `build_twap_schedule()`, `build_vwap_schedule()`, `simulate_execution_with_slippage()` |
+| `compliance` | `run_compliance_rule_engine()`, `monitor_position_limits()`, `evaluate_alert_conditions()`, `build_escalation_plan()` |
+
+`run_performance_snapshot()` stays in `professional/__init__.py` because it
+composes reporting + core metrics (same pattern as `advanced.py`).
 
 ---
 
