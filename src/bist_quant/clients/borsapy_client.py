@@ -535,29 +535,29 @@ class BorsapyClient:
             "cash_flow": cash_flow,
         }
     def _format_quarterly_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Format borsapy quarterly column names (e.g. 2025Q3, 2024Q4) to YYYY/MM.
-        TradingView/borsapy tends to shift the fiscal year forward by 1.
-        e.g., 2025Q3 -> 2024/09, 2024Q4 -> 2023/12.
+        """Format borsapy quarterly column names (e.g. 2026Q1, 2025Q4) to YYYY/MM.
+
+        borsapy returns columns like ``2026Q1`` which maps directly to
+        ``2026/03`` (Q1 = Jan-Mar, quarter ends in March). No year shift
+        is needed — the column labels are already correct fiscal periods.
         """
         if df is None or df.empty:
             return df
-            
+
         new_cols = []
         for col in df.columns:
             col_str = str(col).strip()
-            if len(col_str) == 6 and col_str[4] == 'Q':
+            if len(col_str) == 6 and col_str[4] == "Q":
                 try:
                     year = int(col_str[:4])
                     q = int(col_str[5])
-                    real_year = year - 1
                     month = q * 3
-                    new_cols.append(f"{real_year}/{month:02d}")
+                    new_cols.append(f"{year}/{month:02d}")
                     continue
                 except ValueError:
                     pass
             new_cols.append(col)
-            
+
         df.columns = new_cols
         return df
 
@@ -566,15 +566,16 @@ class BorsapyClient:
         """Return UFRS for bank/financial tickers, None (=XI_29 default) otherwise."""
         return "UFRS" if symbol.upper() in UFRS_TICKERS else None
 
-    def get_financial_statements(self, symbol: str) -> dict[str, pd.DataFrame]:
+    def get_financial_statements(self, symbol: str, last_n: int = 20) -> dict[str, pd.DataFrame]:
         """
-        Get financial statements with disk caching and MCP fallback.
+        Get financial statements with disk caching.
 
         Automatically detects bank/financial tickers that require the UFRS
         accounting group on the İş Yatırım API.
 
         Args:
             symbol: Stock symbol (e.g., THYAO, GARAN)
+            last_n: Number of quarterly periods to fetch (default: 20 = 5 years).
 
         Returns:
             Dictionary containing balance_sheet, income_stmt, cash_flow.
@@ -608,7 +609,7 @@ class BorsapyClient:
             ]:
                 try:
                     raw = getattr(ticker, method_name)(
-                        quarterly=True, financial_group=fg
+                        quarterly=True, financial_group=fg, last_n=last_n
                     )
                     statements[sheet_name] = self._format_quarterly_columns(
                         self._coerce_dataframe(raw)
