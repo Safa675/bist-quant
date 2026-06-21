@@ -36,12 +36,29 @@ By default the library uses user-scoped directories:
 Override them with `BIST_DATA_DIR`, `BIST_REGIME_DIR`, and `BIST_CACHE_DIR` when needed.
 If you are working from local parquet/CSV files, set `BIST_DATA_SOURCE=local`.
 
+## Screener & Technical Scans
+
+```python
+from bist_quant.screening import run_screener, get_screener_metadata
+
+meta = get_screener_metadata()
+hits = run_screener({"index": "XU100", "template": "high_dividend", "limit": 25})
+```
+
+```bash
+bist-quant screener run --index XU100 --template high_dividend --limit 25
+bist-quant scan --template oversold --universe XU100
+```
+
+See [screening/README.md](src/bist_quant/screening/README.md) for payload options.
+
 ## What Ships in the Library
 
 - `portfolio.py` - `PortfolioEngine` and backtest entry points
 - `signals/` - factor and signal builders
 - `analytics/` - performance analytics and metrics
 - `clients/` - built-in data-provider integrations
+- `screening/` - multi-dimensional stock screener and scan helpers
 - `common/` - data loading, backtester, risk, and shared helpers
 - `configs/` - strategy registry and configuration loaders
 - `regime/` - regime classification helpers
