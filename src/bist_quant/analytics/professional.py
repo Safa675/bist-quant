@@ -10,6 +10,7 @@ alerts, and reporting.
 
 from __future__ import annotations
 
+import datetime
 import math
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -51,8 +52,7 @@ def _compare(left: float, comp: str, right: float) -> bool:
     if comp == "==": return left == right
     return left != right
 
-def _parse_date(s: str):
-    import datetime
+def _parse_date(s: str) -> datetime.datetime:
     try: return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
     except: return datetime.datetime(1970, 1, 1)
 
@@ -625,7 +625,7 @@ def analyze_sentiment(items: list[SentimentItem]) -> SentimentSummary:
 # Risk-Adjusted Ratios / Monthly Returns / Benchmarks / Attribution
 # ---------------------------------------------------------------------------
 
-def compute_risk_adjusted_ratios(returns: list[SeriesPoint], risk_free_rate_pct: float = 4):
+def compute_risk_adjusted_ratios(returns: list[SeriesPoint], risk_free_rate_pct: float = 4) -> dict[str, float]:
     if not returns: return {"sharpe": 0, "sortino": 0, "calmar": 0}
     drf = risk_free_rate_pct / 100 / 252
     vals = [r.value for r in returns]
@@ -644,7 +644,7 @@ def compute_risk_adjusted_ratios(returns: list[SeriesPoint], risk_free_rate_pct:
             "sortino": _to_fixed(ae*252/ad,4) if ad > 0 else 0,
             "calmar": _to_fixed(ar/abs(md),4) if md < 0 else 0}
 
-def build_monthly_quarterly_returns(returns: list[SeriesPoint]):
+def build_monthly_quarterly_returns(returns: list[SeriesPoint]) -> dict[str, list[dict[str, Any]]]:
     mmap: dict[str, list[float]] = {}
     qmap: dict[str, list[float]] = {}
     for r in returns:
@@ -734,7 +734,6 @@ def build_twap_schedule(total_quantity: float, start_iso: str, end_iso: str, sli
     s = _parse_date(start_iso); e = _parse_date(end_iso)
     span = max(1000, int((e - s).total_seconds() * 1000))
     base = total / sc; rows = []; alloc = 0.0
-    import datetime
     for i in range(sc):
         q = total - alloc if i == sc - 1 else int(base)
         alloc += q
@@ -749,8 +748,7 @@ def build_vwap_schedule(total_quantity: float, projected_volume_curve: list[floa
     cs = sum(pos)
     base = pos if cs > 0 else [1.0]*len(projected_volume_curve)
     denom = sum(base)
-    import datetime
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     alloc = 0.0
     out = []
     for i, w in enumerate(base):
@@ -814,7 +812,7 @@ def _get_metric(metrics: dict, path: str) -> float:
     return cursor if isinstance(cursor, (int, float)) else float('nan')
 
 def evaluate_alert_conditions(metrics: dict, conditions: list[AlertCondition],
-                              state: dict[str, str | None], now_iso: str):
+                              state: dict[str, str | None], now_iso: str) -> dict[str, Any]:
     now = _parse_date(now_iso)
     next_state = dict(state)
     alerts: list[NotificationAlert] = []
@@ -844,7 +842,7 @@ def group_alerts(alerts: list[NotificationAlert], window_sec: int = 120) -> list
         grouped.append(a); last_by[a.group_key] = a.triggered_at
     return grouped
 
-def build_escalation_plan(alert: NotificationAlert):
+def build_escalation_plan(alert: NotificationAlert) -> list[dict[str, Any]]:
     if alert.severity == "critical":
         return [{"after_minutes": 0, "channel": "push", "action": "Instant push notification"},
                 {"after_minutes": 1, "channel": "sms", "action": "Escalate to on-call desk"},
@@ -859,11 +857,7 @@ def build_escalation_plan(alert: NotificationAlert):
 # Reporting
 # ---------------------------------------------------------------------------
 
-def build_tax_report_jurisdiction(trades: list[TaxTrade], jurisdiction: Literal["TR","US","EU"]) -> TaxReport:
-    return build_tax_report(trades, jurisdiction)
-
 def schedule_report_runs(schedules: list[dict[str, Any]], now_iso: str) -> list[dict[str, str]]:
-    import datetime
     now = _parse_date(now_iso)
     out = []
     for s in schedules:
@@ -878,14 +872,14 @@ def schedule_report_runs(schedules: list[dict[str, Any]], now_iso: str) -> list[
         out.append({"report_id": s["report_id"], "next_run_at": nxt.isoformat()})
     return out
 
-def build_client_report_template(template: Literal["institutional","family_office","advisor"]):
+def build_client_report_template(template: Literal["institutional","family_office","advisor"]) -> dict[str, Any]:
     if template == "institutional":
         return {"template": template, "sections": ["Executive summary","Portfolio performance","Risk decomposition","Liquidity and counterparty profile","Compliance attestations"], "automation": "Monthly auto-delivery + quarterly board deck"}
     if template == "family_office":
         return {"template": template, "sections": ["Capital preservation dashboard","Drawdown and stress tests","Tax-aware realization report","Manager attribution"], "automation": "Monthly PDF + ad-hoc scenario pack"}
     return {"template": template, "sections": ["Client-level return summary","Benchmark comparison","Attribution highlights","Action items and watchlist"], "automation": "Weekly digest + end-of-month statement"}
 
-def run_performance_snapshot(curve: list[SeriesPoint], benchmarks: dict[str, list[SeriesPoint]]):
+def run_performance_snapshot(curve: list[SeriesPoint], benchmarks: dict[str, list[SeriesPoint]]) -> dict[str, Any]:
     rets = curve_to_returns(curve)
     eq = returns_to_equity(rets, 1)
     return {"metrics": compute_performance_metrics(rets, equity_curve=eq),
@@ -898,7 +892,7 @@ def run_performance_snapshot(curve: list[SeriesPoint], benchmarks: dict[str, lis
 # ---------------------------------------------------------------------------
 
 def build_market_intelligence_snapshot(alternative_data, earnings, economic_impact_score,
-                                       sentiment: SentimentSummary, insider, short_interest):
+                                       sentiment: SentimentSummary, insider, short_interest) -> dict[str, Any]:
     by_sym: dict[str, float] = {}
     alerts: list[str] = []
     for r in alternative_data:
