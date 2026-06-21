@@ -47,6 +47,14 @@ warnings.filterwarnings("ignore")
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "configs" / "borsapy_config.yaml"
 
+
+def _default_borsapy_cache_dir() -> Path:
+    """Resolve the canonical borsapy cache directory (``<data_dir>/borsapy_cache``)."""
+    from bist_quant.common.data_paths import get_data_paths
+
+    return get_data_paths().borsapy_cache_dir
+
+
 # Bank and financial institution tickers that require UFRS accounting group
 # on the İş Yatırım MaliTablo endpoint (instead of default XI_29).
 UFRS_TICKERS = {
@@ -119,7 +127,7 @@ class BorsapyClient:
             "jitter": bool(retry_policy.get("jitter", True)),
         }
 
-        self.cache_dir = cache_dir or Path(__file__).parent.parent / "borsapy_cache"
+        self.cache_dir = cache_dir or _default_borsapy_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Persistent disk cache
