@@ -48,7 +48,7 @@ from bist_quant.data_pipeline.types import (
 logger = logging.getLogger(__name__)
 
 
-def compute_default_periods(count: int = 5, as_of: datetime | None = None) -> tuple[tuple[int, int], ...]:
+def compute_default_periods(count: int = 20, as_of: datetime | None = None) -> tuple[tuple[int, int], ...]:
     """Generate quarterly fetch periods similar to legacy fundamentals scripts."""
     now = as_of or datetime.now(timezone.utc)
     year, month = now.year, now.month
@@ -132,7 +132,7 @@ def build_default_config(
     allow_stale_override: bool = False,
 ) -> PipelineConfig:
     """Create runtime config with stable defaults for production usage."""
-    resolved_periods = periods or compute_default_periods(count=5)
+    resolved_periods = periods or compute_default_periods(count=20)
     return PipelineConfig(
         periods=resolved_periods,
         enforce_freshness_gate=enforce_freshness_gate,
