@@ -107,16 +107,6 @@ def cmd_backtest(args) -> None:
     print(f"  Max Drawdown: {result.metrics['max_drawdown']:.2%}")
 
 
-def cmd_api_serve(args) -> None:
-    """Start API server."""
-    import uvicorn
-
-    from server.api.main import app
-
-    print(f"Starting BIST Quant API on {args.host}:{args.port}")
-    uvicorn.run(app, host=args.host, port=args.port)
-
-
 def cmd_fundamentals_fetch(args) -> None:
     """Fetch and consolidate fundamental data from İş Yatırım."""
     from .data_pipeline import FundamentalsPipeline
@@ -222,13 +212,6 @@ def main() -> None:
     backtest_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     backtest_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
     backtest_parser.set_defaults(func=cmd_backtest)
-
-    api_parser = subparsers.add_parser("api", help="API operations")
-    api_sub = api_parser.add_subparsers(dest="api_cmd")
-    api_serve = api_sub.add_parser("serve", help="Start API server")
-    api_serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
-    api_serve.add_argument("--port", type=int, default=8001, help="Port to bind")
-    api_serve.set_defaults(func=cmd_api_serve)
 
     # Fundamentals data pipeline
     fund_parser = subparsers.add_parser("fundamentals", help="Fundamental data pipeline")
