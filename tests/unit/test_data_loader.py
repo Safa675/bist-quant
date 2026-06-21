@@ -88,17 +88,18 @@ class TestDataLoader:
         assert first is second
 
     def test_technical_scan_delegates_to_engine(self, monkeypatch) -> None:
-        """Test DataLoader.technical_scan forwards args to TechnicalScannerEngine."""
-        from server.engines import technical_scanner as technical_scanner_module
+        """Test DataLoader.technical_scan forwards args to TechnicalScanner."""
+        from bist_quant.clients import technical_scan as technical_scan_module
 
         captured: dict[str, object] = {}
 
         class DummyScanner:
-            def scan(self, universe, condition, interval):  # noqa: ANN001
+            def scan(self, universe, condition, interval, template=None):  # noqa: ANN001
                 captured["single"] = {
                     "universe": universe,
                     "condition": condition,
                     "interval": interval,
+                    "template": template,
                 }
                 return pd.DataFrame({"symbol": ["THYAO"]})
 
@@ -110,7 +111,7 @@ class TestDataLoader:
                 }
                 return pd.DataFrame({"symbol": ["THYAO"]})
 
-        monkeypatch.setattr(technical_scanner_module, "TechnicalScannerEngine", DummyScanner)
+        monkeypatch.setattr(technical_scan_module, "TechnicalScanner", DummyScanner)
 
         loader = DataLoader(data_source_priority="local")
         single = loader.technical_scan(
@@ -130,6 +131,7 @@ class TestDataLoader:
             "universe": "XU100",
             "condition": "rsi < 30",
             "interval": "1d",
+            "template": None,
         }
         assert captured["multi"] == {
             "universe": "XU100",
