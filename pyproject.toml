@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bist-quant"
-version = "0.3.3"
+version = "0.5.0"
 description = "Quantitative trading library for BIST"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -60,13 +60,6 @@ dev = [
     "build>=1.0.0",
 ]
 
-server = [
-    "fastapi>=0.100",
-    "uvicorn[standard]>=0.23",
-    "pydantic>=2.0",
-    "PyJWT>=2.0",
-]
-
 [project.scripts]
 bist-quant = "bist_quant.cli:main"
 
@@ -82,7 +75,6 @@ include = [
     "/CONTRIBUTING.md",
     "/docs",
     "/src/bist_quant",
-    "/server",
     "/README.md",
     "/LICENSE",
     "/mkdocs.yml",
@@ -100,7 +92,7 @@ packages = ["src/bist_quant"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "."]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
@@ -110,7 +102,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/bist_quant", "server"]
+source = ["src/bist_quant"]
 branch = true
 omit = [
     # Package init / test files
@@ -175,19 +167,6 @@ omit = [
     "src/bist_quant/common/disk_cache.py",
     "src/bist_quant/realtime/portfolio.py",
     "src/bist_quant/fetchers/*",
-
-    # Server — API and large orchestration modules
-    "server/api/*",
-    "server/jobs/*",
-    "server/observability/*",
-    "server/security/*",
-    "server/engines/__init__.py",
-    "server/engines/errors.py",
-    "server/engines/types.py",
-    "server/engines/factor_lab.py",
-    "server/engines/signal_construction.py",
-    "server/persistence/job_store.py",
-    "server/services/*",
 ]
 
 [tool.coverage.report]
@@ -238,12 +217,7 @@ python_version = "3.13"
 warn_return_any = true
 warn_unused_ignores = true
 ignore_missing_imports = true
-exclude = ["server/"]
 
 [[tool.mypy.overrides]]
 module = ["bist_quant.*"]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = ["server.*"]
 ignore_errors = true
