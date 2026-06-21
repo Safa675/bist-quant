@@ -7,7 +7,8 @@ Usage:
     bist-quant validate
     bist-quant backtest momentum --start 2020-01-01 --end 2024-01-01
     bist-quant signals list
-    bist-quant api serve --port 8001
+    bist-quant screener run --index XU100 --template high_dividend --limit 25
+    bist-quant scan --template oversold --universe XU100
 """
 
 from __future__ import annotations
@@ -229,6 +230,10 @@ def main() -> None:
 
     fund_status = fund_sub.add_parser("status", help="Show fundamentals data status")
     fund_status.set_defaults(func=cmd_fundamentals_status)
+
+    from bist_quant.cli.screener_cli import register_screener_commands
+
+    register_screener_commands(subparsers)
 
     args = parser.parse_args()
 
