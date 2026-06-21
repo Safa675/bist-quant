@@ -899,23 +899,30 @@ class BorsapyClient:
 
     def technical_scan(
         self,
-        condition: str,
+        condition: str | None = None,
         symbols: list[str] | str | None = None,
         timeframe: str = "1d",
         limit: int = 100,
+        *,
+        template: str | None = None,
+        conditions: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Technical condition scanner.
 
         Args:
-            condition: Scan condition (e.g., "crosses_above", "crosses_below")
+            condition: Scan expression (e.g. ``"rsi < 30"``) or predefined template name.
             symbols: Symbols or index universe. If None, scans XU100.
-            timeframe: Timeframe for scan
-            limit: Maximum result count
+            timeframe: Timeframe for scan.
+            limit: Maximum result count (best-effort; depends on borsapy backend).
+            template: Named predefined scan (see :data:`~bist_quant.clients.technical_scan.PREDEFINED_SCANS`).
+            conditions: Multiple expressions combined with logical AND.
 
         Returns:
-            DataFrame with scan results
+            DataFrame with scan results.
         """
+        from bist_quant.clients.technical_scan import TechnicalScanner
+
         if symbols is None:
             universe: str | list[str] = "XU100"
         elif isinstance(symbols, str):
@@ -923,11 +930,30 @@ class BorsapyClient:
         else:
             universe = [self._normalize_symbol(s) for s in symbols]
 
+        scanner = TechnicalScanner(borsapy_module=bp)
         try:
-            return bp.scan(universe=universe, condition=condition, interval=timeframe, limit=limit)
-        except Exception as e:
-            logger.info(f"  Warning: Technical scan failed: {e}")
+            if conditions:
+                frame = scanner.scan_multi(
+                    universe=universe,
+                    conditions=conditions,
+                    interval=timeframe,
+                )
+            else:
+                frame = scanner.scan(
+                    universe=universe,
+                    condition=condition or "",
+                    interval=timeframe,
+                    template=template,
+                )
+        except ValueError:
+            raise
+        except Exception as exc:
+            logger.info(f"  Warning: Technical scan failed: {exc}")
             return pd.DataFrame()
+
+        if limit > 0 and not frame.empty and len(frame) > limit:
+            return frame.head(limit).copy()
+        return frame
 
     # -------------------------------------------------------------------------
     # MCP Fallback Helpers
