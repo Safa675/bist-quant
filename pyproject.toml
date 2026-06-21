@@ -8,7 +8,7 @@ version = "0.3.3"
 description = "Quantitative trading library for BIST"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 authors = [
     {name = "Safa Öksüz", email = "safa.okksuz@gmail.com"}
 ]
@@ -234,11 +234,16 @@ ignore = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+exclude = ["server/"]
 
 [[tool.mypy.overrides]]
 module = ["bist_quant.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["server.*"]
 ignore_errors = true
