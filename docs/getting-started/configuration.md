@@ -20,11 +20,6 @@ export BIST_ENFORCE_FUNDAMENTAL_FRESHNESS=0  # 1 = enforce gate
 export BIST_ALLOW_STALE_FUNDAMENTALS=1       # 1 = bypass gate
 export BIST_MAX_MEDIAN_STALENESS_DAYS=90     # default threshold
 
-# Auth (API server)
-export BIST_AUTH_MODE=none                   # none | api_key | jwt | either
-export BIST_API_KEYS=key1,key2               # comma-separated valid keys
-export BIST_JWT_SECRET=your-secret           # JWT signing secret
-
 # Debug
 export DEBUG=1                               # verbose per-day backtester logs
 ```
