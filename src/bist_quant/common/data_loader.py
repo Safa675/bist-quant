@@ -511,31 +511,38 @@ class DataLoader:
         universe: str | list[str] = "XU100",
         interval: str = "1d",
         conditions: list[str] | None = None,
+        *,
+        template: str | None = None,
     ) -> pd.DataFrame:
-        """Run technical scans via ``TechnicalScannerEngine``."""
-        try:
-            from server.engines.technical_scanner import TechnicalScannerEngine
-        except ImportError as exc:
-            raise ImportError(
-                "technical_scan() requires the server package. "
-                'Install with `pip install -e ".[server]"` or call '
-                "server.engines.technical_scanner.TechnicalScannerEngine directly."
-            ) from exc
+        """Run technical scans via :class:`~bist_quant.clients.technical_scan.TechnicalScanner`."""
+        from bist_quant.clients.technical_scan import TechnicalScanner
 
-        scanner = TechnicalScannerEngine()
+        scanner = TechnicalScanner()
         if conditions:
             return scanner.scan_multi(
                 universe=universe,
                 conditions=conditions,
                 interval=interval,
             )
-        if condition is None:
-            raise ValueError("condition is required when conditions is not provided.")
+        if condition is None and template is None:
+            raise ValueError("condition or template is required when conditions is not provided.")
         return scanner.scan(
             universe=universe,
-            condition=condition,
+            condition=condition or "",
             interval=interval,
+            template=template,
         )
+
+    def run_screener(
+        self,
+        payload: dict[str, Any],
+        *,
+        runtime_paths: Any | None = None,
+    ) -> dict[str, Any]:
+        """Run the multi-dimensional stock screener."""
+        from bist_quant.screening import run_screener
+
+        return run_screener(payload, runtime_paths=runtime_paths)
 
     # -------------------------------------------------------------------------
     # Deprecated borsapy passthroughs (keep for backward-compat with warnings)
