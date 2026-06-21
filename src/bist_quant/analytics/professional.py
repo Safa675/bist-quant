@@ -26,23 +26,11 @@ from .core_metrics import (
     returns_to_equity,
     sample_std_dev,
 )
+from ._shared import _clamp, _to_fixed
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _clamp(v: float, lo: float, hi: float) -> float:
-    if not math.isfinite(v): return lo
-    return max(lo, min(hi, v))
-
-def _rd(v: float, d: int = 4) -> float:
-    if not math.isfinite(v): return 0.0
-    return round(v, d)
-
-def _variance(vals: list[float]) -> float:
-    if len(vals) < 2: return 0.0
-    avg = mean(vals)
-    return sum((x - avg) ** 2 for x in vals) / (len(vals) - 1)
 
 def _normal_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / math.sqrt(2 * math.pi)
@@ -322,15 +310,15 @@ def build_crypto_trade_plan(inp: CryptoTradeInput) -> CryptoTradePlan:
     liq = entry * (1 - liq_buf) if inp.side == "long" else entry * (1 + liq_buf)
     fee_bps = _clamp(inp.taker_fee_bps, 0, 200)
     fees = notional * fee_bps / 10000
-    return CryptoTradePlan(inp.pair.upper(), inp.side, _rd(notional,2), _rd(margin,2),
-                           _rd(qty,6), _rd(liq,4), _rd(risk_cap,2), _rd(fees,2))
+    return CryptoTradePlan(inp.pair.upper(), inp.side, _to_fixed(notional,2), _to_fixed(margin,2),
+                           _to_fixed(qty,6), _to_fixed(liq,4), _to_fixed(risk_cap,2), _to_fixed(fees,2))
 
 def compute_forex_pip_value(pair: str, lot_size: float, account_conversion_rate: float = 1.0) -> ForexPipResult:
     p = pair.upper()
     pip_size = 0.01 if p.endswith("JPY") else 0.0001
     pv = lot_size * pip_size
     conv = max(0, account_conversion_rate) if math.isfinite(account_conversion_rate) else 1
-    return ForexPipResult(p, pip_size, _rd(pv,6), _rd(pv*conv,6))
+    return ForexPipResult(p, pip_size, _to_fixed(pv,6), _to_fixed(pv*conv,6))
 
 def compute_option_greeks(inp: OptionGreeksInput) -> OptionGreeksResult:
     s, k = max(1e-4, inp.spot), max(1e-4, inp.strike)
@@ -353,9 +341,9 @@ def compute_option_greeks(inp: OptionGreeksInput) -> OptionGreeksResult:
     rc = k*t*disc*nd2 / 100
     rp = -k*t*disc*normal_cdf(-d2) / 100
     is_call = inp.option_type == "call"
-    return OptionGreeksResult(_rd(delta,6), _rd(gamma,6), _rd(tc if is_call else tp,6),
-                              _rd(vega,6), _rd(rc if is_call else rp,6),
-                              _rd(call_p if is_call else put_p,6))
+    return OptionGreeksResult(_to_fixed(delta,6), _to_fixed(gamma,6), _to_fixed(tc if is_call else tp,6),
+                              _to_fixed(vega,6), _to_fixed(rc if is_call else rp,6),
+                              _to_fixed(call_p if is_call else put_p,6))
 
 def compute_futures_margin(symbol: str, contracts: int, price: float,
                            contract_size: float, initial_margin_rate: float,
@@ -363,10 +351,10 @@ def compute_futures_margin(symbol: str, contracts: int, price: float,
                            tick_value: float) -> FuturesMarginResult:
     c = max(1, round(contracts))
     n = max(0, price) * max(0, contract_size) * c
-    return FuturesMarginResult(symbol.upper(), _rd(n,2),
-                               _rd(n*_clamp(initial_margin_rate,0,1),2),
-                               _rd(n*_clamp(maintenance_margin_rate,0,1),2),
-                               _rd(max(0,tick_value)*c,4))
+    return FuturesMarginResult(symbol.upper(), _to_fixed(n,2),
+                               _to_fixed(n*_clamp(initial_margin_rate,0,1),2),
+                               _to_fixed(n*_clamp(maintenance_margin_rate,0,1),2),
+                               _to_fixed(max(0,tick_value)*c,4))
 
 # ---------------------------------------------------------------------------
 # Fund Screening
@@ -392,7 +380,7 @@ def screen_funds(candidates: list[FundCandidate]) -> list[FundScreenResult]:
     results = []
     for i, c in enumerate(candidates):
         sc = exp[i]*0.18 + trk[i]*0.17 + aum[i]*0.12 + spr[i]*0.13 + ret[i]*0.2 + shp[i]*0.2
-        results.append(FundScreenResult(c.symbol, _rd(sc*100,2), sc >= 0.62))
+        results.append(FundScreenResult(c.symbol, _to_fixed(sc*100,2), sc >= 0.62))
     return sorted(results, key=lambda r: r.score, reverse=True)
 
 # ---------------------------------------------------------------------------
@@ -402,9 +390,9 @@ def screen_funds(candidates: list[FundCandidate]) -> list[FundScreenResult]:
 def compute_commodity_spread(front_price: float, back_price: float,
                              multiplier: float, contracts: int) -> CommoditySpreadResult:
     sp = front_price - back_price
-    return CommoditySpreadResult(_rd(sp,4),
-                                 _rd(sp/front_price*100,4) if front_price > 0 else 0,
-                                 _rd(sp*multiplier*contracts,2))
+    return CommoditySpreadResult(_to_fixed(sp,4),
+                                 _to_fixed(sp/front_price*100,4) if front_price > 0 else 0,
+                                 _to_fixed(sp*multiplier*contracts,2))
 
 # ---------------------------------------------------------------------------
 # Risk Evaluation
@@ -428,9 +416,9 @@ def evaluate_strategy_risk(limits: list[StrategyRiskLimit],
     return breaches
 
 def run_portfolio_stress_test(portfolio_value: float, shocks: list[StressFactorShock]) -> StressTestResult:
-    rows = [{"factor": s.factor, "loss_pct": _rd(s.shock_pct*s.beta,4)} for s in shocks]
+    rows = [{"factor": s.factor, "loss_pct": _to_fixed(s.shock_pct*s.beta,4)} for s in shocks]
     total = sum(r["loss_pct"] for r in rows)
-    return StressTestResult(_rd(total,4), _rd(portfolio_value*total/100,2), rows)
+    return StressTestResult(_to_fixed(total,4), _to_fixed(portfolio_value*total/100,2), rows)
 
 def assess_counterparty_risk(exposures: list[CounterpartyExposure]) -> list[CounterpartyAssessment]:
     out = []
@@ -439,9 +427,9 @@ def assess_counterparty_risk(exposures: list[CounterpartyExposure]) -> list[Coun
         cr = 100 - _clamp(e.credit_score, 0, 100)
         cds = _clamp(e.cds_bps/8, 0, 100)
         sz = min(100, math.log1p(unsec)*7)
-        sc = _rd(cr*0.45 + cds*0.25 + sz*0.3, 2)
+        sc = _to_fixed(cr*0.45 + cds*0.25 + sz*0.3, 2)
         rating: Literal["low","moderate","high"] = "high" if sc >= 70 else "moderate" if sc >= 40 else "low"
-        out.append(CounterpartyAssessment(e.counterparty, _rd(unsec,2), sc, rating))
+        out.append(CounterpartyAssessment(e.counterparty, _to_fixed(unsec,2), sc, rating))
     return sorted(out, key=lambda a: a.risk_score, reverse=True)
 
 def monitor_liquidity_risk(positions: list[LiquidityPosition],
@@ -452,7 +440,7 @@ def monitor_liquidity_risk(positions: list[LiquidityPosition],
         adv = max(1, r.avg_daily_dollar_volume)
         days = r.position_value / (adv * p)
         lvl: Literal["low","moderate","high"] = "high" if days > 5 else "moderate" if days > 2 else "low"
-        out.append(LiquidityRiskResult(r.symbol, _rd(days,2), _rd(p*100,2), lvl))
+        out.append(LiquidityRiskResult(r.symbol, _to_fixed(days,2), _to_fixed(p*100,2), lvl))
     return out
 
 def detect_concentration_risk(positions: list[ConcentrationPosition],
@@ -461,7 +449,7 @@ def detect_concentration_risk(positions: list[ConcentrationPosition],
     alerts: list[ConcentrationAlert] = []
     for r in positions:
         if r.weight_pct > single_name_limit_pct:
-            alerts.append(ConcentrationAlert("single_name", r.symbol, _rd(r.weight_pct,2), single_name_limit_pct))
+            alerts.append(ConcentrationAlert("single_name", r.symbol, _to_fixed(r.weight_pct,2), single_name_limit_pct))
     for dim, key_attr in [("asset_class","asset_class"),("sector","sector"),("region","region")]:
         grouped: dict[str, float] = {}
         for r in positions:
@@ -469,7 +457,7 @@ def detect_concentration_risk(positions: list[ConcentrationPosition],
             grouped[k] = grouped.get(k, 0) + r.weight_pct
         for k, v in grouped.items():
             if v > bucket_limit_pct:
-                alerts.append(ConcentrationAlert(dim, k, _rd(v,2), bucket_limit_pct))
+                alerts.append(ConcentrationAlert(dim, k, _to_fixed(v,2), bucket_limit_pct))
     return sorted(alerts, key=lambda a: a.weight_pct, reverse=True)
 
 # ---------------------------------------------------------------------------
@@ -512,7 +500,7 @@ def build_strategy_health(curve: list[SeriesPoint]) -> StrategyHealth:
         else "warning" if m.max_drawdown <= -15 or m.sharpe < 0.8
         else "ok"
     )
-    return StrategyHealth(_rd(m.sharpe,4), _rd(m.sortino,4), _rd(m.calmar,4), _rd(m.max_drawdown,4), alert)
+    return StrategyHealth(_to_fixed(m.sharpe,4), _to_fixed(m.sortino,4), _to_fixed(m.calmar,4), _to_fixed(m.max_drawdown,4), alert)
 
 # ---------------------------------------------------------------------------
 # Factor Exposure Model
@@ -530,17 +518,17 @@ def build_factor_exposure_model(strategy_returns: list[SeriesPoint],
     for factor in factor_series_map:
         x = aligned["values"].get(factor, [])
         if len(x) != len(y) or len(x) < 20: continue
-        vx = _variance(x)
+        vx = sample_std_dev(x) ** 2
         if vx <= 0: continue
         b = covariance(x, y) / vx
-        betas[factor] = _rd(b, 6)
-        contribs[factor] = _rd(b * mean(x) * 252 * 100, 4)
+        betas[factor] = _to_fixed(b, 6)
+        contribs[factor] = _to_fixed(b * mean(x) * 252 * 100, 4)
         predicted = [predicted[i] + b * x[i] for i in range(len(y))]
     residuals = [y[i] - predicted[i] for i in range(len(y))]
-    vy = _variance(y)
-    vr = _variance(residuals)
+    vy = sample_std_dev(y) ** 2
+    vr = sample_std_dev(residuals) ** 2
     r2 = 1 - vr / vy if vy > 0 else 0
-    return FactorExposureResult(betas, contribs, _rd(sample_std_dev(residuals)*math.sqrt(252)*100,4), _rd(_clamp(r2,-1,1),4))
+    return FactorExposureResult(betas, contribs, _to_fixed(sample_std_dev(residuals)*math.sqrt(252)*100,4), _to_fixed(_clamp(r2,-1,1),4))
 
 # ---------------------------------------------------------------------------
 # Constrained Portfolio Optimization
@@ -603,8 +591,8 @@ def optimize_constrained_portfolio(series_by_asset: dict[str, list[SeriesPoint]]
         if sc > best_sc:
             best_sc, best_w, best_r, best_v, best_sh, best_to = sc, w, ar, av, sh, to
     return ConstrainedOptimizationResult(
-        {assets[i]: _rd(best_w[i],6) for i in range(n)},
-        _rd(best_r*100,4), _rd(best_v*100,4), _rd(best_sh,4), _rd(best_to*100,4))
+        {assets[i]: _to_fixed(best_w[i],6) for i in range(n)},
+        _to_fixed(best_r*100,4), _to_fixed(best_v*100,4), _to_fixed(best_sh,4), _to_fixed(best_to*100,4))
 
 # ---------------------------------------------------------------------------
 # Sentiment
@@ -627,9 +615,9 @@ def analyze_sentiment(items: list[SentimentItem]) -> SentimentSummary:
         sc = raw * sw * (1 + eng / 8)
         by_sym.setdefault(it.symbol, []).append(sc)
         all_sc.append(sc)
-    sym_scores = {s: _rd(mean(v),4) for s, v in by_sym.items()}
+    sym_scores = {s: _to_fixed(mean(v),4) for s, v in by_sym.items()}
     srt = sorted(sym_scores.items(), key=lambda x: x[1], reverse=True)
-    return SentimentSummary(_rd(mean(all_sc),4), sym_scores,
+    return SentimentSummary(_to_fixed(mean(all_sc),4), sym_scores,
                             [s for s, v in srt if v > 0.18][:8],
                             [s for s, v in srt if v < -0.18][-8:])
 
@@ -652,9 +640,9 @@ def compute_risk_adjusted_ratios(returns: list[SeriesPoint], risk_free_rate_pct:
         md = min(md, r.value / peak - 1)
     av, ad = vol*math.sqrt(252), ds*math.sqrt(252)
     ar = mean(vals)*252
-    return {"sharpe": _rd(ae*252/av,4) if av > 0 else 0,
-            "sortino": _rd(ae*252/ad,4) if ad > 0 else 0,
-            "calmar": _rd(ar/abs(md),4) if md < 0 else 0}
+    return {"sharpe": _to_fixed(ae*252/av,4) if av > 0 else 0,
+            "sortino": _to_fixed(ae*252/ad,4) if ad > 0 else 0,
+            "calmar": _to_fixed(ar/abs(md),4) if md < 0 else 0}
 
 def build_monthly_quarterly_returns(returns: list[SeriesPoint]):
     mmap: dict[str, list[float]] = {}
@@ -673,7 +661,7 @@ def build_monthly_quarterly_returns(returns: list[SeriesPoint]):
         for p in sorted(d):
             cum = 1.0
             for v in d[p]: cum *= 1+v
-            out.append({"period": p, "return_pct": _rd((cum-1)*100, 4)})
+            out.append({"period": p, "return_pct": _to_fixed((cum-1)*100, 4)})
         return out
     return {"monthly": to_rows(mmap), "quarterly": to_rows(qmap)}
 
@@ -688,21 +676,21 @@ def compare_benchmarks(strategy_returns: list[SeriesPoint],
         if len(bench) != len(strat) or len(bench) < 20:
             out.append(BenchmarkComparison(name, 0, 0, 0, 0, 0)); continue
         c = correlation(strat, bench)
-        vb = _variance(bench)
+        vb = sample_std_dev(bench) ** 2
         b = covariance(strat, bench)/vb if vb > 0 else 0
         a = (mean(strat) - b*mean(bench))*252*100
         active = [strat[i]-bench[i] for i in range(len(strat))]
         te = sample_std_dev(active)*math.sqrt(252)*100
         ir = mean(active)*252*100/te if te > 0 else 0
-        out.append(BenchmarkComparison(name, _rd(c,4), _rd(b,4), _rd(a,4), _rd(te,4), _rd(ir,4)))
+        out.append(BenchmarkComparison(name, _to_fixed(c,4), _to_fixed(b,4), _to_fixed(a,4), _to_fixed(te,4), _to_fixed(ir,4)))
     return sorted(out, key=lambda x: x.alpha_pct, reverse=True)
 
 def compute_attribution(drivers: list[AttributionInput]) -> AttributionResult:
     total = sum(d.contribution_pct for d in drivers)
     base = abs(total) if abs(total) > 1e-5 else 1
-    norm = sorted([{"driver": d.driver, "share_pct": _rd(d.contribution_pct/base*100,4)} for d in drivers],
+    norm = sorted([{"driver": d.driver, "share_pct": _to_fixed(d.contribution_pct/base*100,4)} for d in drivers],
                   key=lambda x: abs(x["share_pct"]), reverse=True)
-    return AttributionResult(_rd(total,4), norm)
+    return AttributionResult(_to_fixed(total,4), norm)
 
 def decompose_portfolio_risk_factors(weights: dict[str, float],
                                      exposures_by_asset: dict[str, dict[str, float]]) -> list[RiskFactorContribution]:
@@ -712,7 +700,7 @@ def decompose_portfolio_risk_factors(weights: dict[str, float],
         for f, v in exp.items():
             ft[f] = ft.get(f, 0) + w * v
     at = sum(abs(v) for v in ft.values()) or 1
-    return sorted([RiskFactorContribution(f, _rd(we,6), _rd(abs(we)/at*100,4)) for f, we in ft.items()],
+    return sorted([RiskFactorContribution(f, _to_fixed(we,6), _to_fixed(abs(we)/at*100,4)) for f, we in ft.items()],
                   key=lambda x: x.contribution_pct, reverse=True)
 
 # ---------------------------------------------------------------------------
@@ -727,7 +715,7 @@ def build_tax_report(trades: list[TaxTrade], jurisdiction: Literal["TR","US","EU
         if t.pnl <= 0: continue
         if t.holding_days >= rates[2]: lt_tax += t.pnl * rates[1]
         else: st_tax += t.pnl * rates[0]
-    return TaxReport(jurisdiction, _rd(st_tax,2), _rd(lt_tax,2), _rd(gross-st_tax-lt_tax,2))
+    return TaxReport(jurisdiction, _to_fixed(st_tax,2), _to_fixed(lt_tax,2), _to_fixed(gross-st_tax-lt_tax,2))
 
 # ---------------------------------------------------------------------------
 # Execution Algorithms
@@ -773,8 +761,8 @@ def build_vwap_schedule(total_quantity: float, projected_volume_curve: list[floa
 
 def build_bracket_order(entry: float, stop_pct: float, tp_pct: float, quantity: float) -> BracketOrder:
     b = max(1e-6, entry)
-    return BracketOrder(_rd(b,4), _rd(b*(1-_clamp(stop_pct,0.05,95)/100),4),
-                        _rd(b*(1+_clamp(tp_pct,0.05,300)/100),4), _rd(max(0,quantity),4))
+    return BracketOrder(_to_fixed(b,4), _to_fixed(b*(1-_clamp(stop_pct,0.05,95)/100),4),
+                        _to_fixed(b*(1+_clamp(tp_pct,0.05,300)/100),4), _to_fixed(max(0,quantity),4))
 
 def simulate_execution_with_slippage(order_quantity: float, side: Literal["buy","sell"],
                                      levels: list[OrderBookLevel], benchmark_price: float) -> ExecutionSimulationResult:
@@ -789,7 +777,7 @@ def simulate_execution_with_slippage(order_quantity: float, side: Literal["buy",
     filled = qty - rem
     avg = cost / filled if filled > 0 else 0
     slip = ((avg/benchmark_price - 1)*10000 if side == "buy" else (benchmark_price/avg - 1)*10000) if filled > 0 else 0
-    return ExecutionSimulationResult(_rd(filled,4), _rd(avg,6), _rd(slip,4), _rd(rem,4))
+    return ExecutionSimulationResult(_to_fixed(filled,4), _to_fixed(avg,6), _to_fixed(slip,4), _to_fixed(rem,4))
 
 # ---------------------------------------------------------------------------
 # Compliance & Alerts
@@ -814,7 +802,7 @@ def detect_user_activity_anomalies(events: list[dict[str, str]]) -> list[dict[st
     vals = list(counts.values())
     avg = mean(vals); sd = sample_std_dev(vals)
     if sd <= 0: return []
-    return sorted([{"user_id": u, "actions_per_hour": _rd(c,4), "z_score": _rd((c-avg)/sd,4)}
+    return sorted([{"user_id": u, "actions_per_hour": _to_fixed(c,4), "z_score": _to_fixed((c-avg)/sd,4)}
                    for u, c in counts.items() if (c-avg)/sd >= 2.2],
                   key=lambda x: x["z_score"], reverse=True)
 
@@ -838,8 +826,8 @@ def evaluate_alert_conditions(metrics: dict, conditions: list[AlertCondition],
         if state.get(cond.id) and (now - last).total_seconds()*1000 < cd_ms: continue
         alerts.append(NotificationAlert(
             cond.id, cond.name, cond.severity, cond.channels,
-            f"{cond.name}: {cond.metric}={_rd(val,4)} breached {cond.comparator} {cond.threshold}",
-            _rd(val,6), now_iso, cond.group_key or cond.id))
+            f"{cond.name}: {cond.metric}={_to_fixed(val,4)} breached {cond.comparator} {cond.threshold}",
+            _to_fixed(val,6), now_iso, cond.group_key or cond.id))
         next_state[cond.id] = now_iso
     return {"alerts": alerts, "nextState": next_state}
 
@@ -919,7 +907,7 @@ def build_market_intelligence_snapshot(alternative_data, earnings, economic_impa
         if r.expected_eps == 0: continue
         surp = (r.actual_eps - r.expected_eps) / abs(r.expected_eps)
         by_sym[r.symbol] = by_sym.get(r.symbol, 0) + surp * 12
-        if abs(surp) >= 0.2: alerts.append(f"{r.symbol} earnings surprise {_rd(surp*100,2)}%")
+        if abs(surp) >= 0.2: alerts.append(f"{r.symbol} earnings surprise {_to_fixed(surp*100,2)}%")
     for r in insider:
         sig = math.copysign(1, r.net_buy_value) * math.log1p(abs(r.net_buy_value)) / 8
         by_sym[r.symbol] = by_sym.get(r.symbol, 0) + sig
@@ -929,6 +917,6 @@ def build_market_intelligence_snapshot(alternative_data, earnings, economic_impa
         if r.borrow_fee_pct > 15: alerts.append(f"{r.symbol} elevated borrow fee {r.borrow_fee_pct:.2f}%")
     for sym, sc in sentiment.by_symbol.items():
         by_sym[sym] = by_sym.get(sym, 0) + sc * 10
-    sym_sc = {s: _rd(v,4) for s, v in by_sym.items()}
+    sym_sc = {s: _to_fixed(v,4) for s, v in by_sym.items()}
     conv = mean(list(sym_sc.values())) + economic_impact_score * 0.02 + sentiment.overall_score * 8
-    return {"conviction_score": _rd(conv,4), "by_symbol": sym_sc, "alerts": alerts}
+    return {"conviction_score": _to_fixed(conv,4), "by_symbol": sym_sc, "alerts": alerts}
