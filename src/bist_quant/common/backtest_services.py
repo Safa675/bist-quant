@@ -222,7 +222,9 @@ class RebalancingSelectionService:
                 day_signal_count=day_signal_count,
             )
 
-        if use_liquidity_filter:
+        if use_liquidity_filter and len(available) > 20:
+            # Only apply liquidity filter when we have a large enough universe
+            # for the quantile threshold to be meaningful.
             available = self.risk_manager.filter_by_liquidity(
                 available,
                 date,
@@ -231,13 +233,19 @@ class RebalancingSelectionService:
         day_signals = day_signals[available]
 
         if len(day_signals) < top_n:
-            return RebalanceDecision(
-                old_selected=old_selected,
-                rebalance_turnover=0.0,
-                day_signal_count=day_signal_count,
-            )
+            # Not enough tickers to fill top_n — select what we have if
+            # there's a reasonable cross-section (at least 3), otherwise skip.
+            if len(day_signals) < 3:
+                return RebalanceDecision(
+                    old_selected=old_selected,
+                    rebalance_turnover=0.0,
+                    day_signal_count=day_signal_count,
+                )
+            effective_top_n = len(day_signals)
+        else:
+            effective_top_n = top_n
 
-        top_stocks = day_signals.nlargest(top_n).index.tolist()
+        top_stocks = day_signals.nlargest(effective_top_n).index.tolist()
         entry_prices = {
             ticker: float(open_df.loc[date, ticker])
             for ticker in top_stocks
