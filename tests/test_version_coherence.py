@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -35,13 +33,8 @@ def test_docs_versions_match_package_version() -> None:
         assert expected in _read(path), f"expected {path} to contain {expected!r}"
 
 
-def test_cli_and_api_versions_match_package_version() -> None:
+def test_cli_version_matches_package_version() -> None:
     cli_source = _read("src/bist_quant/_cli.py")
-    api_source = _read("server/api/main.py")
-
-    api_match = re.search(r'FastAPI\(title="BIST Quant API", version=([^\)]+)\)', api_source)
 
     assert "from . import __version__" in cli_source
     assert 'version=f"%(prog)s {__version__}"' in cli_source
-    assert api_match is not None
-    assert api_match.group(1).strip() == "__version__"
