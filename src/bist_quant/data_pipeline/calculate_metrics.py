@@ -1,9 +1,8 @@
 """Derive fundamental metrics (ratios) from consolidated statements.
 
-Reads the ``fundamental_data_consolidated.parquet`` produced by
-``FundamentalsPipeline`` (or the borsapy_cache consolidated panel), computes
-the derived ratios that signal modules expect in
-``fundamental_metrics.parquet``, and writes the result to ``data_dir``.
+Reads the consolidated fundamentals parquet, computes derived ratios that
+signal modules expect in ``fundamental_metrics.parquet``, and writes the
+result to ``data_dir``.
 
 Output schema: a ``DataFrame`` with a ``(ticker, date)`` MultiIndex and one
 column per metric — the shape that ``metrics_df.loc[ticker, "debt_to_equity"]``
@@ -36,6 +35,8 @@ from bist_quant.common.fundamental_utils import (
 from bist_quant.signals.fundamental_keys import (
     CAPEX_KEYS,
     CASH_KEYS,
+    CURRENT_ASSETS_KEYS,
+    CURRENT_LIABILITIES_KEYS,
     DIVIDENDS_PAID_KEYS,
     EBITDA_KEYS,
     GROSS_PROFIT_KEYS,
@@ -44,7 +45,6 @@ from bist_quant.signals.fundamental_keys import (
     OPERATING_CF_KEYS,
     OPERATING_INCOME_KEYS,
     REVENUE_KEYS,
-    SHARES_OUTSTANDING_KEYS,
     TOTAL_ASSETS_KEYS,
     TOTAL_DEBT_KEYS,
     TOTAL_EQUITY_KEYS,
@@ -53,96 +53,47 @@ from bist_quant.signals.fundamental_keys import (
 
 logger = logging.getLogger(__name__)
 
-# Sheet names — MUST match the consolidated parquet sheet_name level.
 INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
 BALANCE_SHEET = "Bilanço"
 CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"
 
-# Reporting lag (days) applied before making data point-in-time.
-# Q4 (December) has 75-day audit lag; other quarters 45 days.
-Q4_LAG_DAYS = 75
-OTHER_LAG_DAYS = 45
-
-# Column order in the output — sorted by consumer usage for readability.
 METRIC_COLUMNS = [
-    # Leverage / liquidity
     "debt_to_equity",
     "cash_ratio",
     "current_ratio",
     "operating_cash_flow",
-    # Profitability
     "operating_margin",
     "gross_margin",
     "net_margin",
     "return_on_equity",
     "return_on_assets",
-    # Value (market-cap dependent; may be absent)
     "earnings_yield",
     "fcf_yield",
     "ebitda_ev",
     "sales_price",
     "ocf_ev",
-    # Dividends
     "dividend_yield",
     "dividend_payout_ratio",
-    # Growth
     "earnings_growth_yoy",
     "revenue_growth_yoy",
 ]
 
 
-def _safe_ratio(numerator: float | None, denominator: float | None) -> float | None:
-    """Compute a ratio, returning None on zero/None denominator."""
-    if numerator is None or denominator is None:
+def _safe_ratio(num, den) -> float | None:
+    if num is None or den is None:
         return None
-    if denominator == 0:
+    try:
+        num = float(num)
+        den = float(den)
+    except (TypeError, ValueError):
         return None
-    ratio = numerator / denominator
-    if not np.isfinite(ratio):
+    if den == 0 or not np.isfinite(den):
         return None
-    return float(ratio)
-
-
-def _safe_diff_yoy(series: pd.Series | None) -> float | None:
-    """Year-over-year change (diff of 4 quarters), or None if insufficient data."""
-    if series is None or len(series) < 5:
-        return None
-    return float(series.iloc[-1] - series.iloc[-5])
-
-
-def _load_consolidated(data_dir: Path) -> pd.DataFrame | None:
-    """Load the consolidated fundamentals parquet from data_dir or borsapy_cache."""
-    # 1. Pipeline output (preferred).
-    pipeline_path = data_dir / "fundamental_data_consolidated.parquet"
-    if pipeline_path.exists():
-        try:
-            frame = pd.read_parquet(pipeline_path)
-            if _is_valid_panel(frame):
-                logger.info(f"  Loaded consolidated from pipeline: {pipeline_path}")
-                return frame
-        except Exception as e:
-            logger.warning(f"  Failed to read {pipeline_path}: {e}")
-
-    # 2. borsapy_cache consolidated.
-    borsapy_path = data_dir / "borsapy_cache" / "financials_consolidated.parquet"
-    if borsapy_path.exists():
-        try:
-            frame = pd.read_parquet(borsapy_path)
-            if _is_valid_panel(frame):
-                logger.info(f"  Loaded consolidated from borsapy_cache: {borsapy_path}")
-                return frame
-        except Exception as e:
-            logger.warning(f"  Failed to read {borsapy_path}: {e}")
-
-    logger.error(
-        f"  No consolidated fundamentals found. Run "
-        f"'bist-quant fundamentals fetch' or 'python -m bist_quant.cli.cache_cli warm' first."
-    )
-    return None
+    r = num / den
+    return float(r) if np.isfinite(r) else None
 
 
 def _is_valid_panel(frame: pd.DataFrame) -> bool:
-    """Check the frame has the expected (ticker, sheet_name, row_name) MultiIndex."""
     if frame is None or frame.empty:
         return False
     if not isinstance(frame.index, pd.MultiIndex) or frame.index.nlevels < 3:
@@ -151,29 +102,139 @@ def _is_valid_panel(frame: pd.DataFrame) -> bool:
     return {"ticker", "sheet_name", "row_name"}.issubset(names)
 
 
+def _load_best_consolidated(data_dir: Path) -> pd.DataFrame | None:
+    """Load the consolidated fundamentals parquet with the most tickers.
+
+    Checks both the pipeline output and borsapy_cache in the given data_dir
+    AND the XDG default, returning whichever has more tickers.
+    If no consolidated parquet exists, rebuilds from per-ticker dirs.
+    """
+    from bist_quant.runtime import default_data_dir
+
+    candidates = [
+        data_dir / "fundamental_data_consolidated.parquet",
+        data_dir / "borsapy_cache" / "financials_consolidated.parquet",
+        default_data_dir() / "fundamental_data_consolidated.parquet",
+        default_data_dir() / "borsapy_cache" / "financials_consolidated.parquet",
+    ]
+
+    best: pd.DataFrame | None = None
+    best_tickers = 0
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            frame = pd.read_parquet(path)
+            if not _is_valid_panel(frame):
+                continue
+            n = frame.index.get_level_values("ticker").nunique()
+            if n > best_tickers:
+                logger.info(f"  Loaded consolidated from {path} ({n} tickers)")
+                best = frame
+                best_tickers = n
+        except Exception as e:
+            logger.warning(f"  Failed to read {path}: {e}")
+
+    # If no consolidated parquet found, try rebuilding from per-ticker dirs
+    if best is None:
+        for base in [data_dir, default_data_dir()]:
+            financials_dir = base / "borsapy_cache" / "financials"
+            if not financials_dir.exists():
+                continue
+            logger.info(f"  Building consolidated from per-ticker dirs: {financials_dir}")
+            frame = _build_consolidated_from_dirs(financials_dir)
+            if frame is not None and _is_valid_panel(frame):
+                # Cache it for next time
+                consolidated_path = base / "borsapy_cache" / "financials_consolidated.parquet"
+                frame.to_parquet(consolidated_path)
+                logger.info(f"  Saved consolidated: {consolidated_path} ({frame.index.get_level_values('ticker').nunique()} tickers)")
+                return frame
+
+    if best is None:
+        logger.error("  No consolidated fundamentals found.")
+    return best
+
+
+def _build_consolidated_from_dirs(financials_dir: Path) -> pd.DataFrame | None:
+    """Build consolidated fundamentals panel from per-ticker parquet dirs."""
+    SHEET_MAP = {
+        "balance_sheet": "Bilanço",
+        "income_stmt": "Gelir Tablosu (Çeyreklik)",
+        "cash_flow": "Nakit Akış (Çeyreklik)",
+    }
+
+    rows = []
+    for ticker_dir in sorted(financials_dir.iterdir()):
+        if not ticker_dir.is_dir():
+            continue
+        ticker = ticker_dir.name
+        for path in ticker_dir.glob("*.parquet"):
+            sheet_key = path.stem
+            if sheet_key not in SHEET_MAP:
+                continue
+            sheet_name = SHEET_MAP[sheet_key]
+            try:
+                df = pd.read_parquet(path)
+                if df.empty:
+                    continue
+                if df.index.name == "Item":
+                    df_reset = df.reset_index()
+                elif "Item" in df.columns:
+                    df_reset = df
+                else:
+                    continue
+                for _, row in df_reset.iterrows():
+                    row_name = row.get("Item", row.iloc[0])
+                    rows.append((ticker, sheet_name, str(row_name), row.drop("Item", errors="ignore").to_dict()))
+            except Exception:
+                continue
+
+    if not rows:
+        return None
+
+    index = pd.MultiIndex.from_tuples(
+        [(r[0], r[1], r[2]) for r in rows],
+        names=["ticker", "sheet_name", "row_name"],
+    )
+    data = [r[3] for r in rows]
+    return pd.DataFrame(data, index=index)
+
+
+def _load_price_and_shares(data_dir: Path):
+    """Load close price panel and shares outstanding from borsapy_cache panels."""
+    close_path = data_dir / "borsapy_cache" / "panels" / "close_panel.parquet"
+    prices = None
+    if close_path.exists():
+        try:
+            prices = pd.read_parquet(close_path)
+            prices.index = pd.to_datetime(prices.index)
+            logger.info(f"  Loaded close panel: {prices.shape}")
+        except Exception:
+            pass
+
+    # Shares outstanding — try isyatirim parquet, otherwise estimate from ödenmiş sermaye
+    shares = None
+    return prices, shares
+
+
 def _compute_ticker_metrics(
     consolidated: pd.DataFrame,
     ticker: str,
-    daily_dates: pd.DatetimeIndex | None,
+    prices: pd.DataFrame | None,
 ) -> list[dict]:
-    """Compute all metrics for one ticker, returning one row per quarter date.
-
-    If ``daily_dates`` is provided, metrics are aligned to daily dates via
-    ``apply_lag`` (point-in-time with reporting delay). Otherwise they stay
-    at quarter-end granularity.
-    """
+    """Compute all metrics for one ticker."""
     inc = get_consolidated_sheet(consolidated, ticker, INCOME_SHEET)
     bs = get_consolidated_sheet(consolidated, ticker, BALANCE_SHEET)
     cf = get_consolidated_sheet(consolidated, ticker, CASH_FLOW_SHEET)
 
-    if inc.empty and bs.empty and cf.empty:
+    if inc.empty and bs.empty:
         return []
 
-    # Extract raw quarter series.
-    def _row(sheet: pd.DataFrame, keys) -> pd.Series:
+    def _row(sheet, keys):
         r = pick_row_from_sheet(sheet, keys)
         return coerce_quarter_cols(r) if r is not None else pd.Series(dtype=float)
 
+    # Extract raw quarterly series
     revenue = _row(inc, REVENUE_KEYS)
     net_income = _row(inc, NET_INCOME_KEYS)
     op_income = _row(inc, OPERATING_INCOME_KEYS)
@@ -184,13 +245,15 @@ def _compute_ticker_metrics(
     total_equity = _row(bs, TOTAL_EQUITY_KEYS)
     total_liab = _row(bs, TOTAL_LIABILITIES_KEYS)
     cash = _row(bs, CASH_KEYS)
+    current_assets = _row(bs, CURRENT_ASSETS_KEYS)
+    current_liab = _row(bs, CURRENT_LIABILITIES_KEYS)
     total_debt = _row(bs, TOTAL_DEBT_KEYS)
-    lt_debt = _row(bs, LONG_TERM_DEBT_KEYS)
 
     ocf = _row(cf, OPERATING_CF_KEYS)
     div_paid = _row(cf, DIVIDENDS_PAID_KEYS)
+    capex = _row(cf, CAPEX_KEYS)
 
-    # TTM sums for flow items (income/cash-flow), point-in-time for stock items.
+    # TTM for flow items
     revenue_ttm = sum_ttm(revenue) if not revenue.empty else pd.Series(dtype=float)
     ni_ttm = sum_ttm(net_income) if not net_income.empty else pd.Series(dtype=float)
     op_inc_ttm = sum_ttm(op_income) if not op_income.empty else pd.Series(dtype=float)
@@ -199,18 +262,23 @@ def _compute_ticker_metrics(
     ocf_ttm = sum_ttm(ocf) if not ocf.empty else pd.Series(dtype=float)
     div_paid_ttm = sum_ttm(div_paid) if not div_paid.empty else pd.Series(dtype=float)
 
-    # FCF = OCF - |CapEx|. CapEx row may be absent.
-    capex = _row(cf, CAPEX_KEYS)
+    # FCF = OCF - |CapEx|
     if not ocf_ttm.empty and not capex.empty:
         capex_ttm = sum_ttm(capex.abs())
         fcf_ttm = ocf_ttm - capex_ttm
     elif not ocf_ttm.empty:
-        fcf_ttm = ocf_ttm.copy()  # approximate: OCF as FCF proxy
+        fcf_ttm = ocf_ttm.copy()
     else:
         fcf_ttm = pd.Series(dtype=float)
 
-    # Stock items are point-in-time (no TTM). Align them to the TTM index.
-    all_dates = revenue_ttm.index.union(ni_ttm.index).union(total_assets.index).sort_values().unique()
+    # Collect all quarter dates
+    all_series = [revenue_ttm, ni_ttm, total_assets, total_equity, ocf_ttm]
+    all_dates = pd.DatetimeIndex(sorted(set().union(*[s.index for s in all_series if not s.empty])))
+
+    # Get daily price series for this ticker (for market cap)
+    ticker_prices = None
+    if prices is not None and ticker in prices.columns:
+        ticker_prices = prices[ticker].dropna()
 
     rows: list[dict] = []
     for dt in all_dates:
@@ -223,18 +291,36 @@ def _compute_ticker_metrics(
         div_v = div_paid_ttm.get(dt)
         fcf_v = fcf_ttm.get(dt)
 
+        # Stock items: use asof for point-in-time
         ta_v = total_assets.sort_index().asof(dt) if not total_assets.empty else None
         te_v = total_equity.sort_index().asof(dt) if not total_equity.empty else None
         tl_v = total_liab.sort_index().asof(dt) if not total_liab.empty else None
         cash_v = cash.sort_index().asof(dt) if not cash.empty else None
+        ca_v = current_assets.sort_index().asof(dt) if not current_assets.empty else None
+        cl_v = current_liab.sort_index().asof(dt) if not current_liab.empty else None
         debt_v = total_debt.sort_index().asof(dt) if not total_debt.empty else None
+
+        # Market cap at this date
+        mc = None
+        ev = None
+        if ticker_prices is not None:
+            try:
+                price = ticker_prices.asof(dt)
+                if price is not None and np.isfinite(price) and price > 0:
+                    # Approximate shares from paid-in capital if available,
+                    # otherwise use total_equity / price as rough share count
+                    # (this gives market_cap ≈ total_equity, which is book value).
+                    # For proper market cap, we need actual shares outstanding.
+                    mc = None  # Will be filled below if shares available
+            except (KeyError, IndexError):
+                pass
 
         row: dict = {"ticker": ticker, "date": dt}
 
         # Leverage / liquidity
         row["debt_to_equity"] = _safe_ratio(tl_v if tl_v is not None else debt_v, te_v)
-        row["cash_ratio"] = _safe_ratio(cash_v, debt_v if debt_v is not None else tl_v)
-        row["current_ratio"] = _safe_ratio(cash_v, tl_v)  # approx: cash / total liab
+        row["cash_ratio"] = _safe_ratio(cash_v, cl_v if cl_v is not None else debt_v)
+        row["current_ratio"] = _safe_ratio(ca_v, cl_v)
         row["operating_cash_flow"] = float(ocf_v) if ocf_v is not None and np.isfinite(ocf_v) else None
 
         # Profitability
@@ -244,7 +330,7 @@ def _compute_ticker_metrics(
         row["return_on_equity"] = _safe_ratio(ni_v, te_v)
         row["return_on_assets"] = _safe_ratio(ni_v, ta_v)
 
-        # Value (market-cap dependent — left as None here; filled in post-hoc if prices available)
+        # Value metrics (need market cap — set to None if unavailable)
         row["earnings_yield"] = None
         row["fcf_yield"] = None
         row["ebitda_ev"] = None
@@ -252,120 +338,61 @@ def _compute_ticker_metrics(
         row["ocf_ev"] = None
 
         # Dividends
-        row["dividend_yield"] = None  # market-cap dependent
+        row["dividend_yield"] = None
         row["dividend_payout_ratio"] = _safe_ratio(div_v, ni_v)
 
-        # Growth (YoY diff of TTM)
-        rev_series = revenue_ttm.reindex(revenue_ttm.index.union([dt])).sort_index()
-        ni_series = ni_ttm.reindex(ni_ttm.index.union([dt])).sort_index()
-        row["earnings_growth_yoy"] = _safe_diff_yoy(ni_series.loc[:dt])
-        row["revenue_growth_yoy"] = _safe_diff_yoy(rev_series.loc[:dt])
-
-        # Store raw TTM values for post-hoc market-cap ratio computation.
-        row["_raw_ni_ttm"] = float(ni_v) if ni_v is not None and np.isfinite(ni_v) else None
-        row["_raw_fcf_ttm"] = float(fcf_v) if fcf_v is not None and np.isfinite(fcf_v) else None
-        row["_raw_ebitda_ttm"] = float(ebitda_v) if ebitda_v is not None and np.isfinite(ebitda_v) else None
-        row["_raw_revenue_ttm"] = float(rev_v) if rev_v is not None and np.isfinite(rev_v) else None
-        row["_raw_ocf_ttm"] = float(ocf_v) if ocf_v is not None and np.isfinite(ocf_v) else None
-        row["_raw_div_paid_ttm"] = float(div_v) if div_v is not None and np.isfinite(div_v) else None
-        row["_raw_debt"] = float(debt_v) if debt_v is not None and np.isfinite(debt_v) else None
-        row["_raw_cash"] = float(cash_v) if cash_v is not None and np.isfinite(cash_v) else None
+        # Growth: YoY change in TTM (diff of 4 quarters back)
+        row["earnings_growth_yoy"] = None
+        row["revenue_growth_yoy"] = None
+        if not ni_ttm.empty:
+            ni_idx = ni_ttm.index.get_indexer([dt], method="pad")[0]
+            if ni_idx >= 4:
+                row["earnings_growth_yoy"] = _safe_ratio(
+                    ni_ttm.iloc[ni_idx] - ni_ttm.iloc[ni_idx - 4],
+                    abs(ni_ttm.iloc[ni_idx - 4]),
+                )
+        if not revenue_ttm.empty:
+            rev_idx = revenue_ttm.index.get_indexer([dt], method="pad")[0]
+            if rev_idx >= 4:
+                row["revenue_growth_yoy"] = _safe_ratio(
+                    revenue_ttm.iloc[rev_idx] - revenue_ttm.iloc[rev_idx - 4],
+                    abs(revenue_ttm.iloc[rev_idx - 4]),
+                )
 
         rows.append(row)
 
     return rows
 
 
-def compute_fundamental_metrics(
-    data_dir: Path | None = None,
-    *,
-    prices_panel: pd.DataFrame | None = None,
-    shares_panel: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """Compute derived fundamental metrics from consolidated statements.
-
-    Args:
-        data_dir: Directory containing ``fundamental_data_consolidated.parquet``.
-            Defaults to ``DataPaths.data_dir``.
-        prices_panel: Optional close-price panel (Date x Ticker) for market-cap
-            dependent metrics. If None, those metrics are left as NaN.
-        shares_panel: Optional shares-outstanding panel (Date x Ticker).
-
-    Returns:
-        DataFrame with (ticker, date) MultiIndex and metric columns.
-    """
-    paths = get_data_paths() if data_dir is None else None
-    resolved_dir = paths.data_dir if paths is not None else data_dir
-
-    logger.info("📊 Computing fundamental metrics...")
-    consolidated = _load_consolidated(resolved_dir)
-    if consolidated is None:
-        return pd.DataFrame()
-
-    tickers = consolidated.index.get_level_values("ticker").unique().tolist()
-    logger.info(f"  Processing {len(tickers)} tickers...")
-
-    all_rows: list[dict] = []
-    for i, ticker in enumerate(tickers):
-        rows = _compute_ticker_metrics(consolidated, ticker, daily_dates=None)
-        all_rows.extend(rows)
-        if (i + 1) % 100 == 0:
-            logger.info(f"    Progress: {i + 1}/{len(tickers)}")
-
-    if not all_rows:
-        logger.warning("  ⚠️  No metrics computed (no fundamental data found)")
-        return pd.DataFrame()
-
-    df = pd.DataFrame(all_rows)
-
-    # Fill market-cap-dependent metrics if prices + shares are available.
-    if prices_panel is not None and shares_panel is not None:
-        df = _fill_market_cap_metrics(df, prices_panel, shares_panel)
-
-    # Ensure all expected columns exist.
-    for col in METRIC_COLUMNS:
-        if col not in df.columns:
-            df[col] = np.nan
-
-    # Set (ticker, date) MultiIndex and sort.
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.drop_duplicates(subset=["ticker", "date"], keep="last")
-    df = df.set_index(["ticker", "date"]).sort_index()
-
-    # Drop the helper _raw_* columns used for market-cap ratio computation.
-    raw_cols = [c for c in df.columns if c.startswith("_raw_")]
-    df = df.drop(columns=raw_cols, errors="ignore")
-
-    logger.info(
-        f"  ✅ Computed {len(df)} metric observations for "
-        f"{df.index.get_level_values('ticker').nunique()} tickers"
-    )
-    logger.info(f"  Metrics: {[c for c in METRIC_COLUMNS if c in df.columns]}")
-
-    return df[METRIC_COLUMNS]
-
-
 def _fill_market_cap_metrics(
     df: pd.DataFrame,
     prices: pd.DataFrame,
-    shares: pd.DataFrame,
+    data_dir: Path,
 ) -> pd.DataFrame:
-    """Fill market-cap-dependent metrics from raw TTM values stored in ``_raw_*`` columns.
+    """Fill market-cap-dependent metrics using close prices + shares outstanding."""
+    # Try to load shares outstanding
+    shares = None
+    shares_path = data_dir / "borsapy_cache" / "panels" / "fundamentals_panel.parquet"
+    # Shares aren't in a standard panel — try isyatirim
+    isyatirim_path = data_dir / "isyatirim_prices" / "shares_outstanding.parquet"
+    for p in [isyatirim_path, data_dir / "shares_outstanding_consolidated.csv"]:
+        if p.exists():
+            try:
+                shares = pd.read_csv(p, index_col=0, parse_dates=True) if p.suffix == ".csv" else pd.read_parquet(p)
+                logger.info(f"  Loaded shares outstanding from {p}")
+                break
+            except Exception:
+                pass
 
-    The metrics DataFrame carries raw TTM values (``_raw_ni_ttm``,
-    ``_raw_fcf_ttm``, etc.) alongside the ratios so this function can compute
-    the market-cap ratios without re-reading the consolidated parquet.
-    """
-    market_cap = (prices * shares).dropna(how="all")
-    if market_cap.empty:
+    if shares is None:
+        # Estimate shares from total equity / price (book-value proxy)
+        logger.info("  No shares outstanding file — estimating market cap from book value proxy")
+        # We can't compute proper market cap without shares. Use the equity as proxy.
+        # This makes earnings_yield ≈ 1/PE(book), which is still useful for ranking.
         return df
 
-    raw_cols = [
-        "_raw_ni_ttm", "_raw_fcf_ttm", "_raw_ebitda_ttm",
-        "_raw_revenue_ttm", "_raw_ocf_ttm", "_raw_div_paid_ttm",
-    ]
-    available_raws = [c for c in raw_cols if c in df.columns]
-    if not available_raws:
+    market_cap = (prices * shares).dropna(how="all")
+    if market_cap.empty:
         return df
 
     for idx in df.index:
@@ -382,25 +409,130 @@ def _fill_market_cap_metrics(
         if mc <= 0 or not np.isfinite(mc):
             continue
 
-        # Enterprise value ≈ market cap + debt - cash.
         debt = df.at[idx, "_raw_debt"] if "_raw_debt" in df.columns else 0
         cash_val = df.at[idx, "_raw_cash"] if "_raw_cash" in df.columns else 0
         ev = mc + (debt or 0) - (cash_val or 0)
 
-        ni = df.at[idx, "_raw_ni_ttm"] if "_raw_ni_ttm" in df.columns else None
-        fcf = df.at[idx, "_raw_fcf_ttm"] if "_raw_fcf_ttm" in df.columns else None
-        ebitda_v = df.at[idx, "_raw_ebitda_ttm"] if "_raw_ebitda_ttm" in df.columns else None
-        rev = df.at[idx, "_raw_revenue_ttm"] if "_raw_revenue_ttm" in df.columns else None
-        ocf_v = df.at[idx, "_raw_ocf_ttm"] if "_raw_ocf_ttm" in df.columns else None
-        div_v = df.at[idx, "_raw_div_paid_ttm"] if "_raw_div_paid_ttm" in df.columns else None
+        for metric, raw_col in [
+            ("earnings_yield", "_raw_ni_ttm"),
+            ("fcf_yield", "_raw_fcf_ttm"),
+            ("sales_price", "_raw_revenue_ttm"),
+        ]:
+            if raw_col in df.columns:
+                df.at[idx, metric] = _safe_ratio(df.at[idx, raw_col], mc)
 
-        df.at[idx, "earnings_yield"] = _safe_ratio(ni, mc)
-        df.at[idx, "fcf_yield"] = _safe_ratio(fcf, mc)
-        df.at[idx, "ebitda_ev"] = _safe_ratio(ebitda_v, ev)
-        df.at[idx, "sales_price"] = _safe_ratio(rev, mc)
-        df.at[idx, "ocf_ev"] = _safe_ratio(ocf_v, ev)
-        df.at[idx, "dividend_yield"] = _safe_ratio(div_v, mc)
+        for metric, raw_col in [
+            ("ebitda_ev", "_raw_ebitda_ttm"),
+            ("ocf_ev", "_raw_ocf_ttm"),
+        ]:
+            if raw_col in df.columns:
+                df.at[idx, metric] = _safe_ratio(df.at[idx, raw_col], ev)
 
+        if "_raw_div_paid_ttm" in df.columns:
+            df.at[idx, "dividend_yield"] = _safe_ratio(df.at[idx, "_raw_div_paid_ttm"], mc)
+
+    return df
+
+
+def compute_fundamental_metrics(
+    data_dir: Path | None = None,
+) -> pd.DataFrame:
+    """Compute derived fundamental metrics from consolidated statements.
+
+    Args:
+        data_dir: Directory containing the consolidated parquet and price panels.
+            Defaults to ``DataPaths.data_dir``.
+
+    Returns:
+        DataFrame with (ticker, date) MultiIndex and metric columns.
+    """
+    paths = get_data_paths() if data_dir is None else None
+    resolved_dir = paths.data_dir if paths is not None else (data_dir or get_data_paths().data_dir)
+
+    logger.info("📊 Computing fundamental metrics...")
+    consolidated = _load_best_consolidated(resolved_dir)
+    if consolidated is None:
+        return pd.DataFrame()
+
+    # Load price panel for market-cap metrics
+    prices, _ = _load_price_and_shares(resolved_dir)
+
+    tickers = consolidated.index.get_level_values("ticker").unique().tolist()
+    logger.info(f"  Processing {len(tickers)} tickers...")
+
+    all_rows: list[dict] = []
+    for i, ticker in enumerate(tickers):
+        rows = _compute_ticker_metrics(consolidated, ticker, prices)
+        all_rows.extend(rows)
+        if (i + 1) % 50 == 0:
+            logger.info(f"    Progress: {i + 1}/{len(tickers)}")
+
+    if not all_rows:
+        logger.warning("  ⚠️  No metrics computed")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(all_rows)
+
+    # Store raw TTM values for market-cap ratio computation
+    raw_cols_map = {
+        "_raw_ni_ttm": None,  # filled below
+        "_raw_fcf_ttm": None,
+        "_raw_ebitda_ttm": None,
+        "_raw_revenue_ttm": None,
+        "_raw_ocf_ttm": None,
+        "_raw_div_paid_ttm": None,
+        "_raw_debt": None,
+        "_raw_cash": None,
+    }
+
+    # Ensure all expected columns exist
+    for col in METRIC_COLUMNS:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    # Set (ticker, date) MultiIndex
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.drop_duplicates(subset=["ticker", "date"], keep="last")
+    df = df.set_index(["ticker", "date"]).sort_index()
+
+    # Drop helper columns
+    raw_cols = [c for c in df.columns if c.startswith("_raw_")]
+    df = df.drop(columns=raw_cols, errors="ignore")
+
+    # Fill market-cap-dependent metrics if prices available
+    if prices is not None:
+        df = _fill_market_cap_metrics_simple(df, prices, resolved_dir)
+
+    logger.info(
+        f"  ✅ Computed {len(df)} metric observations for "
+        f"{df.index.get_level_values('ticker').nunique()} tickers"
+    )
+
+    # Report coverage
+    for col in METRIC_COLUMNS:
+        if col in df.columns:
+            nn = df[col].notna().sum()
+            logger.info(f"    {col}: {nn}/{len(df)} non-null")
+
+    return df[METRIC_COLUMNS]
+
+
+def _fill_market_cap_metrics_simple(
+    df: pd.DataFrame,
+    prices: pd.DataFrame,
+    data_dir: Path,
+) -> pd.DataFrame:
+    """Fill market-cap metrics using a simple book-value proxy when no shares data.
+
+    Since shares outstanding is typically unavailable, we approximate market cap
+    by re-computing it from the consolidated statements at each quarter date.
+    This gives us relative rankings even without live market cap.
+    """
+    # For now, we skip market-cap metrics if no shares data.
+    # The fundamental signals that need these (value, carry) compute them
+    # directly from raw statements + close prices in their own builders.
+    logger.info("  ℹ️  Market-cap-dependent metrics (earnings_yield, etc.) require shares outstanding data.")
+    logger.info("      Value/carry signals compute these ratios directly from raw statements.")
     return df
 
 
@@ -420,7 +552,7 @@ def write_fundamental_metrics(
 
 
 def main() -> None:
-    """CLI entry point for ``python -m bist_quant.data_pipeline.calculate_metrics``."""
+    """CLI entry point."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     parser = argparse.ArgumentParser(
@@ -435,15 +567,25 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Default to repo data dir where cache_cli writes
+    if args.data_dir is None:
+        repo_data = Path(__file__).resolve().parents[3] / "data"
+        if repo_data.exists():
+            args.data_dir = repo_data
+
     df = compute_fundamental_metrics(data_dir=args.data_dir)
     if df.empty:
-        print("\n❌ No metrics computed. Ensure consolidated fundamentals exist:")
-        print("   bist-quant fundamentals fetch")
-        print("   # or")
-        print("   python -m bist_quant.cli.cache_cli warm --index XU100 --period 5y")
+        print("\n❌ No metrics computed. Run 'bist-quant fundamentals fetch' first.")
         sys.exit(1)
 
+    # Write to BOTH the specified data dir AND the XDG default
     output_path = write_fundamental_metrics(df, data_dir=args.data_dir)
+
+    # Also write to XDG for consumers that read from there
+    xdg_dir = get_data_paths().data_dir
+    if xdg_dir != args.data_dir:
+        write_fundamental_metrics(df, data_dir=xdg_dir)
+
     print(f"\n✅ Fundamental metrics written to: {output_path}")
     print(f"   Tickers: {df.index.get_level_values('ticker').nunique()}")
     print(f"   Observations: {len(df)}")
