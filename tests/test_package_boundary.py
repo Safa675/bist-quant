@@ -11,7 +11,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_WHEEL_PREFIXES = [
-    "server/",
     "bist_quant/api/",
     "bist_quant/engines/",
     "bist_quant/jobs/",
