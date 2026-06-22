@@ -1,0 +1,6 @@
+#!/bin/sh
+# Strip Cursor agent attribution lines injected by IDE/cloud agents.
+# Installed via: scripts/setup-git-hooks.sh
+sed -i '/cursoragent@cursor\.com/d' "$1"
+sed -i '/^Co-authored-by: Cursor/d' "$1"
+sed -i '/^Made-with: Cursor/d' "$1"
