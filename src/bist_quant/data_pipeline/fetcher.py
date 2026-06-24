@@ -27,43 +27,7 @@ ISY_HEADERS = {
     "Referer": "https://www.isyatirim.com.tr/",
 }
 
-# Known institutions typically using UFRS group on the endpoint.
-BANK_TICKERS = {
-    "AKBNK",
-    "ALBRK",
-    "DENIZ",
-    "GARAN",
-    "HALKB",
-    "ICBCT",
-    "ISCTR",
-    "KLNMA",
-    "QNBFB",
-    "QNBFK",
-    "QNBTR",
-    "SKBNK",
-    "TSKB",
-    "VAKBN",
-    "YKBNK",
-}
-FINANCE_TICKERS = {
-    "AGESA",
-    "AKGRT",
-    "ANHYT",
-    "ANSGR",
-    "AVHOL",
-    "AVIVA",
-    "GUSGR",
-    "HDFGS",
-    "ISFIN",
-    "ISGSY",
-    "ISYAT",
-    "RAYSG",
-    "SEKFK",
-    "TURSG",
-    "VAKFN",
-    "VKFYO",
-}
-UFRS_TICKERS = BANK_TICKERS | FINANCE_TICKERS
+from bist_quant.common.ticker_sets import UFRS_TICKERS
 
 
 def classify_fetch_error(exc: Exception, status_code: int | None = None) -> str:

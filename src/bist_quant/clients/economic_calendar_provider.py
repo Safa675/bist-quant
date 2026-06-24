@@ -13,10 +13,16 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from bist_quant.clients.base_provider import BaseProvider
+from bist_quant.clients.utils import (
+    as_frame,
+    pick_column,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class EconomicCalendarProvider:
+class EconomicCalendarProvider(BaseProvider):
     """Resilient accessor for upcoming macro-economic events."""
 
     SUPPORTED_COUNTRIES = ("TR", "US", "EU", "DE", "GB", "JP", "CN")
@@ -36,32 +42,11 @@ class EconomicCalendarProvider:
         now_fn: Callable[[], datetime] | None = None,
         cache_dir: Any = None,
     ) -> None:
-        self._bp = borsapy_module
-        self._import_attempted = borsapy_module is not None
+        super().__init__(borsapy_module=borsapy_module, cache_dir=cache_dir)
         self._now = now_fn or datetime.now
-        self._disk_cache: Any | None = None
-        if cache_dir is not None:
-            try:
-                from pathlib import Path as _Path
-                from bist_quant.common.disk_cache import DiskCache
-                self._disk_cache = DiskCache(_Path(cache_dir))
-            except Exception:
-                pass
 
-    def _get_bp(self) -> Any | None:
-        if self._bp is not None:
-            return self._bp
-        if self._import_attempted:
-            return None
-        self._import_attempted = True
-        try:
-            import borsapy as bp  # type: ignore[import-not-found]
-
-            self._bp = bp
-        except Exception as exc:
-            logger.info("  EconomicCalendarProvider: borsapy unavailable: %s", exc)
-            self._bp = None
-        return self._bp
+    _as_frame = staticmethod(as_frame)
+    _pick_column = staticmethod(pick_column)
 
     @staticmethod
     def _period_from_days(days_ahead: int) -> str:
@@ -72,31 +57,6 @@ class EconomicCalendarProvider:
         if days_ahead <= 14:
             return "2w"
         return "1mo"
-
-    @staticmethod
-    def _as_frame(payload: Any) -> pd.DataFrame:
-        if isinstance(payload, pd.DataFrame):
-            return payload.copy()
-        if isinstance(payload, (list, tuple)):
-            try:
-                return pd.DataFrame(payload)
-            except Exception:
-                return pd.DataFrame()
-        if isinstance(payload, dict):
-            try:
-                return pd.DataFrame(payload)
-            except Exception:
-                return pd.DataFrame([payload])
-        return pd.DataFrame()
-
-    @staticmethod
-    def _pick_column(frame: pd.DataFrame, candidates: list[str]) -> str | None:
-        lookup = {str(col).strip().lower(): col for col in frame.columns}
-        for candidate in candidates:
-            hit = lookup.get(candidate.lower())
-            if hit is not None:
-                return str(hit)
-        return None
 
     @classmethod
     def _empty_events(cls) -> pd.DataFrame:

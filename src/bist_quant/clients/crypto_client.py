@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import httpx
 import pandas as pd
+
+from bist_quant.clients.base_mcp import BaseMCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class CryptoAsset:
     source: str
 
 
-class CryptoClient:
+class CryptoClient(BaseMCPClient):
     """Client for crypto market data from BtcTurk/Coinbase via Borsa MCP."""
 
     def __init__(
@@ -37,18 +37,12 @@ class CryptoClient:
         cache_ttl: int = 300,
         cache_dir: Any = None,
     ):
-        self._mcp_endpoint = mcp_endpoint
-        self._session = httpx.AsyncClient(timeout=timeout)
-        self._cache: Dict[str, tuple[pd.DataFrame, float]] = {}
-        self._cache_ttl = cache_ttl
-        self._disk_cache: Any | None = None
-        if cache_dir is not None:
-            try:
-                from pathlib import Path as _Path
-                from bist_quant.common.disk_cache import DiskCache as _DiskCache
-                self._disk_cache = _DiskCache(_Path(cache_dir))
-            except Exception:
-                pass
+        super().__init__(
+            mcp_endpoint=mcp_endpoint,
+            cache_ttl=cache_ttl,
+            cache_dir=cache_dir,
+            disk_cache_category="crypto",
+        )
 
     async def get_crypto_markets(self, exchange: Optional[str] = None) -> pd.DataFrame:
         """Get crypto market data."""
@@ -153,34 +147,7 @@ class CryptoClient:
                 deduped.append(norm)
         return deduped
 
-    async def _call_mcp_async(self, tool: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Call Borsa MCP endpoint asynchronously."""
-        payload = {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "method": "tools/call",
-            "params": {"name": tool, "arguments": params},
-        }
-
-        try:
-            response = await self._session.post(
-                self._mcp_endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            body = response.json()
-            if "error" in body:
-                message = body["error"].get("message", "Unknown MCP error")
-                raise RuntimeError(message)
-            return body.get("result", {})
-        except httpx.RequestError as exc:
-            logger.error("Request error calling MCP: %s", exc)
-            raise
-
-    async def close(self) -> None:
-        """Close async HTTP client."""
-        await self._session.aclose()
+    # _call_mcp_async and close are inherited from BaseMCPClient
 
     def _extract_market_records(self, result: Dict[str, Any], exchange: Optional[str]) -> List[Dict[str, Any]]:
         records: List[Dict[str, Any]] = []
@@ -324,49 +291,4 @@ class CryptoClient:
             "volume": self._to_float(pick("volume", default=0.0)),
         }
 
-    def _extract_text_blocks(self, result: Dict[str, Any]) -> List[str]:
-        texts: List[str] = []
-        content = result.get("content")
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and isinstance(item.get("text"), str):
-                    texts.append(item["text"])
-        return texts
-
-    def _cache_get(self, key: str) -> Optional[pd.DataFrame]:
-        if self._disk_cache is not None:
-            _disk = self._disk_cache.get_dataframe("crypto", key)
-            if _disk is not None:
-                return _disk
-        item = self._cache.get(key)
-        if not item:
-            return None
-        cached_df, timestamp = item
-        if datetime.now().timestamp() - timestamp > self._cache_ttl:
-            self._cache.pop(key, None)
-            return None
-        logger.info("Returning cached crypto data for %s", key)
-        return cached_df.copy()
-
-    def _cache_set(self, key: str, value: pd.DataFrame) -> None:
-        self._cache[key] = (value.copy(), datetime.now().timestamp())
-        if self._disk_cache is not None and not value.empty:
-            self._disk_cache.set_dataframe("crypto", key, value)
-
-    @staticmethod
-    def _to_float(value: Any, default: float = 0.0) -> float:
-        if value is None:
-            return default
-        if isinstance(value, (int, float)):
-            return float(value)
-        text = str(value).strip().replace("%", "")
-        if not text:
-            return default
-        if "," in text and "." not in text:
-            text = text.replace(",", ".")
-        else:
-            text = text.replace(",", "")
-        try:
-            return float(text)
-        except ValueError:
-            return default
+    # _extract_text_blocks, _cache_get, _cache_set, and _to_float are inherited from BaseMCPClient

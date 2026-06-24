@@ -7,6 +7,23 @@ from .streaming import load_streaming_auth_config
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
+def get_borsapy_config_path() -> Path:
+    """
+    Get the resolved path to the borsapy configuration file.
+
+    Priority:
+    1. BIST_BORSAPY_CONFIG_PATH environment variable
+    2. 'configs/borsapy_config.yaml' relative to PROJECT_ROOT
+
+    Returns:
+        Path object pointing to the config file location.
+    """
+    env_path = os.environ.get("BIST_BORSAPY_CONFIG_PATH")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return PROJECT_ROOT / "configs" / "borsapy_config.yaml"
+
+
 def get_output_dir(*subpaths: str) -> Path:
     """
     Get the default output directory for writing results.
@@ -42,4 +59,6 @@ __all__ = [
     "load_streaming_auth_config",
     "get_output_dir",
     "PROJECT_ROOT",
+    "get_borsapy_config_path",
 ]
+

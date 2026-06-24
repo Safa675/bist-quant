@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import httpx
 import pandas as pd
 
+from bist_quant.clients.base_mcp import BaseMCPClient
 from bist_quant.clients.fx_enhanced_provider import FXEnhancedProvider
 
 logger = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ class FXPair:
     timestamp: str
 
 
-class FXCommoditiesClient:
+class FXCommoditiesClient(BaseMCPClient):
     """Client for FX and commodities data via Borsa MCP."""
 
     def __init__(
@@ -44,20 +43,14 @@ class FXCommoditiesClient:
         include_bank_rates: bool = True,
         cache_dir: Any = None,
     ):
-        self._mcp_endpoint = mcp_endpoint
-        self._session = httpx.AsyncClient(timeout=timeout)
-        self._cache: Dict[str, tuple[pd.DataFrame, float]] = {}
-        self._cache_ttl = cache_ttl
+        super().__init__(
+            mcp_endpoint=mcp_endpoint,
+            cache_ttl=cache_ttl,
+            cache_dir=cache_dir,
+            disk_cache_category="commodities",
+        )
         self._enhanced_provider = enhanced_provider or FXEnhancedProvider()
         self._include_bank_rates = include_bank_rates
-        self._disk_cache: Any | None = None
-        if cache_dir is not None:
-            try:
-                from pathlib import Path as _Path
-                from bist_quant.common.disk_cache import DiskCache as _DiskCache
-                self._disk_cache = _DiskCache(_Path(cache_dir))
-            except Exception:
-                pass
 
     async def get_fx_rates(self, pairs: Optional[List[str]] = None) -> pd.DataFrame:
         """Get FX rates for given pairs or all available."""
@@ -197,34 +190,7 @@ class FXCommoditiesClient:
         aligned = pd.DataFrame(returns_map)
         return aligned.corr()
 
-    async def _call_mcp_async(self, tool: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Call Borsa MCP endpoint asynchronously."""
-        payload = {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "method": "tools/call",
-            "params": {"name": tool, "arguments": params},
-        }
-
-        try:
-            response = await self._session.post(
-                self._mcp_endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            body = response.json()
-            if "error" in body:
-                message = body["error"].get("message", "Unknown MCP error")
-                raise RuntimeError(message)
-            return body.get("result", {})
-        except httpx.RequestError as exc:
-            logger.error("Request error calling MCP: %s", exc)
-            raise
-
-    async def close(self) -> None:
-        """Close async HTTP client."""
-        await self._session.aclose()
+    # _call_mcp_async and close are inherited from BaseMCPClient
 
     def _extract_fx_records(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
@@ -483,14 +449,7 @@ class FXCommoditiesClient:
             return "mmBtu"
         return "unit"
 
-    def _extract_text_blocks(self, result: Dict[str, Any]) -> List[str]:
-        texts: List[str] = []
-        content = result.get("content")
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and isinstance(item.get("text"), str):
-                    texts.append(item["text"])
-        return texts
+    # _extract_text_blocks is inherited from BaseMCPClient
 
     def _bank_currencies_for_pairs(self, pairs: List[str]) -> List[str]:
         if not pairs:
@@ -571,25 +530,7 @@ class FXCommoditiesClient:
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True, sort=False)
 
-    def _cache_get(self, key: str) -> Optional[pd.DataFrame]:
-        if self._disk_cache is not None:
-            _disk = self._disk_cache.get_dataframe("commodities", key)
-            if _disk is not None:
-                return _disk
-        item = self._cache.get(key)
-        if not item:
-            return None
-        cached_df, timestamp = item
-        if datetime.now().timestamp() - timestamp > self._cache_ttl:
-            self._cache.pop(key, None)
-            return None
-        logger.info("Returning cached FX/commodity data for %s", key)
-        return cached_df.copy()
-
-    def _cache_set(self, key: str, value: pd.DataFrame) -> None:
-        self._cache[key] = (value.copy(), datetime.now().timestamp())
-        if self._disk_cache is not None and not value.empty:
-            self._disk_cache.set_dataframe("commodities", key, value)
+    # _cache_get, _cache_set, and _to_float are inherited from BaseMCPClient
 
     @staticmethod
     def _normalize_pair(pair: str) -> str:
@@ -601,21 +542,3 @@ class FXCommoditiesClient:
         if len(cleaned) == 6:
             return f"{cleaned[:3]}/{cleaned[3:]}"
         return pair.strip().upper()
-
-    @staticmethod
-    def _to_float(value: Any, default: float = 0.0) -> float:
-        if value is None:
-            return default
-        if isinstance(value, (int, float)):
-            return float(value)
-        text = str(value).strip().replace("%", "")
-        if not text:
-            return default
-        if "," in text and "." not in text:
-            text = text.replace(",", ".")
-        else:
-            text = text.replace(",", "")
-        try:
-            return float(text)
-        except ValueError:
-            return default

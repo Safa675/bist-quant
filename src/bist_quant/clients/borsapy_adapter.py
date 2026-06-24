@@ -33,10 +33,8 @@ class BorsapyAdapter:
 
     def __init__(self, loader: "DataLoader") -> None:
         self._loader = loader
-        # We can dynamically look up configs using paths module if necessary, or pass via env, 
-        # but for now we'll hardcode relative to root since config is structured.
-        from bist_quant.settings import PROJECT_ROOT
-        self._config_path = PROJECT_ROOT / "configs" / "borsapy_config.yaml"
+        from bist_quant.settings import get_borsapy_config_path
+        self._config_path = get_borsapy_config_path()
         self._client: Any | None = None
 
     @property

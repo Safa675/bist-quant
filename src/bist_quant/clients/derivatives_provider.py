@@ -15,113 +15,16 @@ from typing import Any
 
 import pandas as pd
 
+from bist_quant.clients.base_provider import BaseProvider
 logger = logging.getLogger(__name__)
 
 
-class DerivativesProvider:
+class DerivativesProvider(BaseProvider):
     """Resilient accessor for VIOP futures/options datasets."""
-
-    def __init__(
-        self,
-        borsapy_module: Any | None = None,
-        cache_dir: Any = None,
-    ) -> None:
-        self._bp = borsapy_module
-        self._import_attempted = borsapy_module is not None
-        self._disk_cache: Any | None = None
-        if cache_dir is not None:
-            try:
-                from pathlib import Path as _Path
-                from bist_quant.common.disk_cache import DiskCache
-                self._disk_cache = DiskCache(_Path(cache_dir))
-            except Exception:
-                pass
-
-    def _get_bp(self) -> Any | None:
-        if self._bp is not None:
-            return self._bp
-        if self._import_attempted:
-            return None
-        self._import_attempted = True
-        try:
-            import borsapy as bp  # type: ignore[import-not-found]
-
-            self._bp = bp
-        except Exception as exc:
-            logger.info("  DerivativesProvider: borsapy unavailable: %s", exc)
-            self._bp = None
-        return self._bp
-
-    @staticmethod
-    def _as_frame(payload: Any) -> pd.DataFrame:
-        if isinstance(payload, pd.DataFrame):
-            return payload.copy()
-        if isinstance(payload, (list, tuple)):
-            if not payload:
-                return pd.DataFrame()
-            try:
-                return pd.DataFrame(payload)
-            except Exception:
-                return pd.DataFrame()
-        if isinstance(payload, dict):
-            if payload and all(
-                not isinstance(v, (list, tuple, dict, pd.Series, pd.DataFrame))
-                for v in payload.values()
-            ):
-                return pd.DataFrame([payload])
-            try:
-                return pd.DataFrame(payload)
-            except Exception:
-                return pd.DataFrame([payload])
-        return pd.DataFrame()
-
-    @staticmethod
-    def _pick_column(frame: pd.DataFrame, candidates: list[str]) -> str | None:
-        lookup = {str(col).strip().lower(): col for col in frame.columns}
-        for candidate in candidates:
-            hit = lookup.get(candidate.lower())
-            if hit is not None:
-                return str(hit)
-        return None
-
-    @staticmethod
-    def _to_float(value: Any) -> float | None:
-        if value is None or isinstance(value, bool):
-            return None
-        if isinstance(value, (int, float)):
-            parsed = float(value)
-            return parsed if math.isfinite(parsed) else None
-
-        text = str(value).strip()
-        if not text:
-            return None
-        text = text.replace("%", "").replace(",", ".")
-        text = re.sub(r"[^0-9eE.\-+]", "", text)
-        if not text:
-            return None
-        try:
-            parsed = float(text)
-        except ValueError:
-            return None
-        return parsed if math.isfinite(parsed) else None
 
     @staticmethod
     def _normalize_symbol(symbol: Any) -> str:
         return str(symbol or "").strip().upper().split(".")[0]
-
-    @staticmethod
-    def _call_if_callable(obj: Any, *args: Any, **kwargs: Any) -> Any:
-        if not callable(obj):
-            return None
-        try:
-            return obj(*args, **kwargs)
-        except TypeError:
-            try:
-                return obj(*args)
-            except Exception:
-                return None
-        except Exception:
-            return None
 
     def _get_viop_instance(self, bp: Any) -> Any | None:
         viop_obj = getattr(bp, "VIOP", None)

@@ -2,13 +2,24 @@
 
 ## Purpose
 
-All external data connectors live here. Each client wraps a specific data source (borsapy, Borsa MCP, isyatirim, TradingView, TEFAS) with caching, retry, circuit-breaking, and defensive normalization. The `DataLoader` in `common/` uses these clients internally via injected adapter properties.
+All external data connectors live here. Each client wraps a specific data source (borsapy, Borsa MCP, isyatirim, TradingView, TEFAS) with caching, retry, circuit-breaking, and defensive normalization. 
+
+The Data Access Layer is structured around:
+1. **Base Classes**: `BaseProvider` for synchronous domain-specific providers, and `BaseMCPClient` for asynchronous Model Context Protocol (MCP) clients.
+2. **Modular Clients**: `BorsapyClient` (decomposed into specialized helper files: `borsapy_prices.py`, `borsapy_financials.py`, and `borsapy_indices.py` for maximum maintainability).
+3. **Adapters**: The `DataLoader` in `common/` uses these clients internally via injected adapter properties (such as `BorsapyAdapter` and `MacroAdapter`).
 
 ## Files
 
 ```
 clients/
-├── borsapy_client.py              # Primary BIST client — price download, index composition, financials
+├── base_provider.py               # Base class for domain-specific synchronous providers
+├── base_mcp.py                    # Base class for asynchronous JSON-RPC MCP clients
+├── utils.py                       # Shared data parsers (to_float, as_frame, pick_column, etc.)
+├── borsapy_client.py              # Primary BIST client wrapper (facade delegating to helper modules)
+├── borsapy_prices.py              # Price downloading, long formatting, and caching logic
+├── borsapy_financials.py          # Financial statements, ratios, and UFRS endpoint routing
+├── borsapy_indices.py             # Index components, predefined scan presets, and indicator calcs
 ├── borsapy_adapter.py             # Thin adapter integrating BorsapyClient into DataLoader
 ├── fx_enhanced_provider.py        # FX bank rates, institution rates (gold/silver), intraday bars
 ├── derivatives_provider.py        # VIOP futures/options data
@@ -25,104 +36,55 @@ clients/
 
 ---
 
-### `borsapy_client.py` — Primary BIST Client
+### Configuration & Paths
 
-The main workhorse for all BIST market data. Adds:
-- **Exponential-backoff retry** via `@retry_with_backoff()` decorator.
-- **Thread-safe circuit breaker** (`CircuitBreaker`) that opens after N failures and recovers after a timeout.
-- **Disk-caching** via `DiskCache` / `CacheTTL`.
-- **MCP fallback** via `https://borsamcp.fastmcp.app/mcp`.
+Default configuration for `BorsapyClient` is loaded dynamically via `get_borsapy_config_path()` defined in `bist_quant.settings`.
+
+- **Environment Override**: Setting the environment variable `BIST_BORSAPY_CONFIG_PATH` to a custom YAML file path overrides the project-level default config.
+- **Default Resolution**: Resolves to `PROJECT_ROOT / "configs" / "borsapy_config.yaml"`.
+
+---
+
+### `borsapy_client.py` — Primary BIST Client Facade
+
+The main workhorse for all BIST market data. It uses a facade design pattern, delegating major responsibilities to specialized sub-modules:
+- **`borsapy_prices.py`**: Price history, TradingView downloading, and CSV/Parquet price caching.
+- **`borsapy_financials.py`**: Auto UFRS detection, quarterly fiscal statement formatting, and ratios.
+- **`borsapy_indices.py`**: Predefined scanner presets, index constituents lookup, and technical indicator metrics (RSI, MACD, Supertrend).
 
 **Key classes:**
 
 | Class | Description |
 |---|---|
-| `CircuitBreaker` | Opens after `failure_threshold` consecutive failures; recovers after `recovery_timeout` seconds |
-| `CircuitBreakerError` | Raised when circuit is open |
-| `BorsapyClient` | Main client: `batch_download_to_long()`, `get_index_components()`, `get_financial_statements()` |
+| `CircuitBreaker` | Thread-safe breaker: opens after consecutive failures; recovers after a timeout |
+| `BorsapyClient` | Main client interface: `batch_download_to_long()`, `get_index_components()`, `get_financial_statements()` |
 
-**Important constant:**  `UFRS_TICKERS` — ~31 bank/financial tickers that require the UFRS accounting endpoint on İş Yatırım (not the standard endpoint). Always check this set before choosing the fetch endpoint.
-
----
-
-### `borsapy_adapter.py` — DataLoader Integration Adapter
-
-Wraps `BorsapyClient` into the `DataLoader` infrastructure. Lazily initializes the client on first access (`.client` property). Config loaded from `configs/borsapy_config.yaml`.
-
-**Key class:** `BorsapyAdapter` — methods: `load_prices()`, `get_index_components()`, `get_financials()`
+**UFRS Endpoint Routing**: Governance of tickers requiring alternate accounting formats is centralized in `bist_quant.common.ticker_sets.UFRS_TICKERS`.
 
 ---
 
 ### Provider Classes (FX, Derivatives, Fixed Income, Calendar)
 
-All four providers share the same structural pattern:
+All synchronous providers inherit from `BaseProvider`. The base class manages dynamic `borsapy` importing and exposes shared static utility methods (`_to_float`, `_as_frame`, `_pick_column`, and `_call_if_callable`) to its subclasses, eliminating code redundancy.
 
-```
-class XxxProvider:
-    _import_attempted: bool = False   # guards repeated try/except
-    _bp = None                        # lazy borsapy module reference
-
-    def __init__(self, cache_dir=None):
-        self._cache = DiskCache(cache_dir) if cache_dir else None
-
-    def _get_bp(self):
-        # One-time guarded import of borsapy
-```
-
-**Turkish number format handling:** All four providers include `_to_float()` helpers that strip `%` signs and replace `,` with `.` for Turkish numeric formatting (e.g. `"1.234,56"` → `1234.56`).
-
-**`FixedIncomeProvider` specifics:**
-- `DEFAULT_FALLBACK_RISK_FREE_RATE = 0.28` (28% TRY-denominated, used when live rate unavailable).
-- `_to_percent_rate()` auto-converts decimal annualized rates (`0.28` → `28.0`).
-
-**`EconomicCalendarProvider` specifics:**
-- Accepts injectable `now_fn` for testability.
-- Canonical columns: `Date, Time, Country, Importance, Event, Forecast, Previous`.
-- Supported countries: `TR, US, EU, DE, GB, JP, CN`.
+**Macro Overlaps**: Some macro methods on `BorsapyClient` (e.g. `get_inflation_data`, `get_bond_yields`, `get_economic_calendar`) overlap with domain-specific providers like `FixedIncomeProvider` and `EconomicCalendarProvider`. Callers should prefer utilizing the dedicated providers where possible for richer parsing and structured outputs.
 
 ---
 
-### Async Clients (Crypto, US Stocks, TEFAS)
+### Async MCP Clients (Crypto, US Stocks, TEFAS)
 
-`CryptoClient`, `USStockClient`, and `TEFASAnalyzer` are all **async** (`httpx.AsyncClient`) and call the Borsa MCP endpoint via JSON-RPC.
+Async clients inherit from `BaseMCPClient`, which encapsulates async HTTP session management and JSON-RPC messaging format.
 
-Common pattern:
-```python
-async def _call_mcp_async(self, tool_name, params) -> str:
-    # POST to MCP endpoint, parse JSON-RPC response
-```
-
-All three use: in-memory TTL cache + optional `DiskCache`.
-
----
-
-### `macro_adapter.py` — Two-Tier Fallback
-
-**Priority**: `EconomicCalendarProvider` (structured) → `MacroEventsClient` (legacy path, dynamically loaded).
-
-Returns empty `dict`/`list`/`DataFrame` if both are unavailable — **never raises** to callers.
-
----
-
-### `update_prices.py` — Price Update CLI
-
-Run as: `python -m bist_quant.clients.update_prices [--source {auto,borsapy,yfinance}] [--dry-run]`
-
-Appends new OHLCV rows to:
-- `bist_prices_full.csv/.parquet`
-- `xu100_prices.csv/.parquet`
-- `xau_try_2013_2026.csv/.parquet`
-
-Uses `_append_and_persist()` which deduplicates on `Date` before writing both CSV and Parquet in sync.
+**Key Base Features**:
+- **Async Client**: Handled automatically via `httpx.AsyncClient`.
+- **Caching**: Shared cache lookup helper (`_cache_get` / `_cache_set`) utilizing in-memory TTL maps combined with persistent local `DiskCache` saves.
 
 ---
 
 ## Local Rules for Contributors
 
 1. **borsapy is primary; never use yfinance directly here.** yfinance belongs only in `fetchers/`.
-2. **Guard all borsapy imports with `try/except`** and set a module-level `_import_attempted` flag so the import failure only logs once.
-3. **Always inject `DiskCache`** via constructor `cache_dir` param rather than hardcoding paths. The cache directory is resolved by `DataLoader`.
-4. **Turkish numeric formats.** All providers dealing with İş Yatırım / borsapy data must use `_to_float()` handling for `%` and `,` separators.
-5. **`UFRS_TICKERS` check.** When adding any financial statement fetch logic in `borsapy_client.py`, verify whether the ticker uses the UFRS endpoint by checking against the `UFRS_TICKERS` set.
-6. **Circuit breaker threshold.** Do not lower the failure threshold below 3 or the recovery timeout below 30 seconds — this would cause instability with the borsapy API.
-7. **Async clients must not be called synchronously.** `CryptoClient`, `USStockClient`, and `TEFASAnalyzer` are async. Synchronous adapters (`PortfolioAnalyticsAdapter`) are the bridge layer.
+2. **Inherit from base classes.** Synchronous providers must inherit from `BaseProvider`. Asynchronous MCP clients must inherit from `BaseMCPClient`.
+3. **Use shared utilities.** Do not re-define or duplicate parsers. Use helper functions exported from `bist_quant.clients.utils` directly or via `BaseProvider` aliases.
+4. **Use centralized ticker sets.** Import `UFRS_TICKERS`, `BANK_TICKERS`, and `FINANCE_TICKERS` from `bist_quant.common.ticker_sets` instead of re-defining them locally.
+5. **Config paths.** Do not hardcode YAML configuration paths. Always use `get_borsapy_config_path()` to ensure environment overrides work.
