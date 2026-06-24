@@ -16,7 +16,8 @@ import pandas as pd
 # Constants (kept here so the cache module is self-contained)
 # ---------------------------------------------------------------------------
 
-AXIS_CACHE_FILENAME = "multi_factor_axis_construction.parquet"
+AXIS_CACHE_VERSION = 2
+AXIS_CACHE_FILENAME = f"multi_factor_axis_construction_v{AXIS_CACHE_VERSION}.parquet"
 
 AXIS_PANEL_NAMES = (
     # Original panels
@@ -158,6 +159,7 @@ def cache_panel_stale_reason(panel_name: str, panel: pd.DataFrame | None) -> str
 
 
 __all__ = [
+    "AXIS_CACHE_VERSION",
     "AXIS_CACHE_FILENAME",
     "AXIS_PANEL_NAMES",
     "OPTIONAL_EMPTY_CACHE_PANELS",

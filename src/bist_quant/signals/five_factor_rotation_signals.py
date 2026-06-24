@@ -45,6 +45,8 @@ from bist_quant.common.utils import (
     assert_panel_not_constant,
     raise_signal_data_error,
 )
+from bist_quant.signals.core.investment import build_conservative_profile
+from bist_quant.signals.core.momentum import compute_price_momentum
 from bist_quant.signals.investment_signals import build_investment_signals
 from bist_quant.signals.small_cap_signals import build_small_cap_signals
 from bist_quant.signals.value_signals import build_value_signals
@@ -730,20 +732,12 @@ def build_five_factor_rotation_signals(
     current_panel = _build_metric_panel(metrics_df, "current_ratio", close.index, tickers)
     payout_panel = _build_metric_panel(metrics_df, "dividend_payout_ratio", close.index, tickers)
 
-    debt_score = _squash_metric(debt_panel, scale=1.5, lower=-2.0, upper=6.0).fillna(0.0)
-    cash_score = _squash_metric(cash_panel, scale=1.0, lower=0.0, upper=8.0).fillna(0.0)
-    current_score = _squash_metric(current_panel, scale=2.0, lower=0.0, upper=12.0).fillna(0.0)
-    payout_score = _squash_metric(payout_panel, scale=0.5, lower=-1.0, upper=2.0).fillna(0.0)
-
-    # Conservative profile: low debt, high cash, good current ratio, reasonable payout
-    # Weights are intentionally not normalized to 1.0 since debt has negative sign
-    # Effective interpretation: debt penalty of 0.55, benefits from cash (0.30),
-    # current ratio (0.30), and payout (0.20)
-    conservative_profile = (
-        -0.55 * debt_score + 0.30 * cash_score + 0.30 * current_score + 0.20 * payout_score
+    conservative_profile = build_conservative_profile(
+        debt_panel,
+        cash_panel,
+        current_panel,
+        payout_panel,
     )
-    conservative_valid = debt_panel.notna() | cash_panel.notna() | current_panel.notna() | payout_panel.notna()
-    conservative_profile = conservative_profile.where(conservative_valid)
 
     investment_raw = _build_two_sided_axis_raw(
         conservative_profile,
@@ -752,7 +746,12 @@ def build_five_factor_rotation_signals(
     _debug_panel_stats(debug, "axis_raw:investment", investment_raw)
 
     # Axis 5: Momentum
-    momentum_raw = close.shift(MOMENTUM_SKIP_DAYS) / close.shift(MOMENTUM_LOOKBACK_DAYS + MOMENTUM_SKIP_DAYS) - 1.0
+    momentum_raw = compute_price_momentum(
+        close,
+        lookback=MOMENTUM_LOOKBACK_DAYS,
+        skip=MOMENTUM_SKIP_DAYS,
+        mode="rotation",
+    )
     _debug_panel_stats(debug, "axis_raw:momentum", momentum_raw)
 
     # Axis 6: Beta (Market Sensitivity)

@@ -24,6 +24,12 @@ from bist_quant.common.utils import (
     sum_ttm,
     validate_signal_panel_schema,
 )
+from bist_quant.signals.core.constants import (
+    BALANCE_SHEET,
+    CASH_FLOW_SHEET,
+    INCOME_SHEET,
+)
+from bist_quant.signals.core.investment import calculate_investment_metrics_for_ticker
 from bist_quant.signals.fundamental_keys import (
     DIVIDENDS_PAID_KEYS,
     RD_KEYS,
@@ -32,67 +38,6 @@ from bist_quant.signals.fundamental_keys import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# Fundamental data keys
-INCOME_SHEET = "Gelir Tablosu (Çeyreklik)"
-BALANCE_SHEET = "Bilanço"
-CASH_FLOW_SHEET = "Nakit Akış (Çeyreklik)"
-
-
-def calculate_investment_metrics_for_ticker(
-    xlsx_path: Path | None,
-    ticker: str,
-    data_loader,
-    fundamentals_parquet: pd.DataFrame | None = None,
-) -> Dict:
-    """Calculate investment metrics for a single ticker"""
-    if fundamentals_parquet is not None:
-        inc = get_consolidated_sheet(fundamentals_parquet, ticker, INCOME_SHEET)
-        bs = get_consolidated_sheet(fundamentals_parquet, ticker, BALANCE_SHEET)
-        cf = get_consolidated_sheet(fundamentals_parquet, ticker, CASH_FLOW_SHEET)
-        if inc.empty and bs.empty and cf.empty:
-            return {}
-        rev_row = pick_row_from_sheet(inc, REVENUE_KEYS)
-        rd_row = pick_row_from_sheet(inc, RD_KEYS)
-        assets_row = pick_row_from_sheet(bs, TOTAL_ASSETS_KEYS)
-        div_row = pick_row_from_sheet(cf, DIVIDENDS_PAID_KEYS) if not cf.empty else None
-    else:
-        if xlsx_path is None:
-            return {}
-        try:
-            inc = pd.read_excel(xlsx_path, sheet_name=INCOME_SHEET)
-            bs = pd.read_excel(xlsx_path, sheet_name=BALANCE_SHEET)
-            try:
-                cf = pd.read_excel(xlsx_path, sheet_name=CASH_FLOW_SHEET)
-            except Exception:
-                cf = None
-        except Exception:
-            return {}
-        
-        rev_row = pick_row(inc, REVENUE_KEYS)
-        rd_row = pick_row(inc, RD_KEYS)
-        assets_row = pick_row(bs, TOTAL_ASSETS_KEYS)
-        div_row = pick_row(cf, DIVIDENDS_PAID_KEYS) if cf is not None else None
-    
-    rev = coerce_quarter_cols(rev_row) if rev_row is not None else pd.Series(dtype=float)
-    rd = coerce_quarter_cols(rd_row) if rd_row is not None else pd.Series(dtype=float)
-    assets = coerce_quarter_cols(assets_row) if assets_row is not None else pd.Series(dtype=float)
-    div = coerce_quarter_cols(div_row) if div_row is not None else pd.Series(dtype=float)
-    
-    rev_ttm = sum_ttm(rev)
-    rd_ttm = sum_ttm(rd)
-    div_ttm = sum_ttm(div)
-    
-    shares = data_loader.load_shares_outstanding(ticker)
-    
-    return {
-        'revenue_ttm': rev_ttm,
-        'rd_ttm': rd_ttm,
-        'dividends_ttm': div_ttm,
-        'total_assets': assets,
-        'shares_outstanding': shares,
-    }
 
 
 def build_investment_signals(

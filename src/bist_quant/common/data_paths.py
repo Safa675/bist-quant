@@ -159,7 +159,9 @@ class DataPaths:
     @property
     def multi_factor_axes(self) -> Path:
         """Pre-computed multi-factor axis construction."""
-        return self.data_dir / "multi_factor_axis_construction.parquet"
+        from bist_quant.signals._axis_cache import AXIS_CACHE_FILENAME
+
+        return self.data_dir / AXIS_CACHE_FILENAME
 
     # -------------------------------------------------------------------------
     # Reference Data
