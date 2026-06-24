@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 
+from bist_quant.common.ticker_sets import UFRS_TICKERS
 from bist_quant.data_pipeline.errors import CircuitBreakerOpenError, FetchError
 from bist_quant.data_pipeline.logging_utils import append_jsonl, log_event
 from bist_quant.data_pipeline.types import PipelineConfig, PipelinePaths, RawDataBundle
@@ -26,9 +27,6 @@ ISY_HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
     "Referer": "https://www.isyatirim.com.tr/",
 }
-
-from bist_quant.common.ticker_sets import UFRS_TICKERS
-
 
 def classify_fetch_error(exc: Exception, status_code: int | None = None) -> str:
     """Map remote fetch exceptions to stable, typed classifications."""
