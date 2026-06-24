@@ -19,10 +19,15 @@ signals/
 ├── technical.py                  # Adapters: sma, donchian, xu100, macd, adx, supertrend…
 ├── composite.py                  # Multi-strategy combos + blending utilities
 │
+├── ── Canonical primitives (migration in progress) ──
+├── core/                         # Shared signal math; see REFACTOR_PLAN.md
+│   ├── momentum.py               # compute_price_momentum(mode="prod"|"rotation")
+│   └── panels/                   # Factor panel builders (quality, …)
+│
 ├── ── Low-Level Signal Implementations ──
-├── factor_builders.py            # Core factor panel construction from financial data
+├── factor_builders.py            # Internal panel builders for five_factor_rotation (facade → core/)
 ├── factor_axes.py                # Combine raw factors into aggregate axes (quality/value/momentum)
-├── axis_cache.py                 # Axis computation cache
+├── _axis_cache.py                # On-disk axis construction cache (five_factor_rotation)
 ├── orthogonalization.py          # Factor orthogonalization utilities
 ├── _context.py                   # Context extraction helpers (close_df, fundamentals, etc.)
 ├── debug_utils.py                # Signal debugging helpers
@@ -38,7 +43,23 @@ signals/
 
 ---
 
-## The SignalBuilder Contract
+## Three implementation tracks
+
+| Track | Entry | When to use |
+|-------|-------|-------------|
+| **A — BUILDERS** | `factory.build_signal(name, …)` | Backtests, portfolio engine, `strategies.yaml` |
+| **B — five_factor_rotation** | `build_signal("five_factor_rotation", …)` | 13-axis rotation composite; uses `factor_builders` + inline axis math |
+| **C — standalone_factors** | `MomentumSignal().compute_signal(…)` | Single-factor research / ablation (not in `BUILDERS`) |
+
+These tracks **may use different formulas** for the same economic idea (e.g. momentum indexing, profitability definition). See `REFACTOR_PLAN.md` before consolidating math.
+
+| Concept | BUILDERS (`profitability`) | five_factor margin panels |
+|---------|---------------------------|---------------------------|
+| Profitability | OpIncome/Assets + GP/Assets | Op margin + GP margin on revenue (TTM) |
+
+Momentum: BUILDERS uses `mode="prod"` (252d, downside-vol adjusted). five_factor axis uses `mode="rotation"` (126d, `shift(L+S)` indexing).
+
+---
 
 Every signal builder **must** satisfy the `SignalBuilder` Protocol defined in `protocol.py`:
 
@@ -107,7 +128,7 @@ If an unknown signal name is passed, `ValueError` is raised with the full list o
 ### Quality Signals (`quality.py`)
 | Builder key | Description |
 |---|---|
-| `profitability` | Operating + gross profit margin composite |
+| `profitability` | Operating income/Assets + gross profit/Assets (assets-based) |
 | `earnings_quality` | Accruals and cash earnings quality |
 | `fscore_reversal` | Piotroski F-score based reversal |
 | `roa` | Return on assets |
@@ -144,9 +165,8 @@ Registered composites: `betting_against_beta`, `breakout_value`, `five_factor_ro
 ## Low-Level Layer
 
 ### `factor_builders.py`
-Builds raw factor panels directly from financial statement data (Parquet cache). Contains:
-- Turkish IFRS field keys (`INCOME_SHEET`, `BALANCE_SHEET`, `CASH_FLOW_SHEET`)
-- Row key tuples for ~20 financial line items — **ordered by preference** (first match wins)
+**Internal** panel builders for `five_factor_rotation`. Prefer `build_signal()` or `signals.core` for new code. Delegates to `signals/core/panels/` as factors are migrated.
+- Turkish IFRS field keys and row lookups (migrating into `core/panels/`)
 - Core lookback constants: `VOLATILITY_LOOKBACK_DAYS = 63`, `BETA_LOOKBACK_DAYS = 252`, etc.
 
 > ⚠️ Comment warning in the file: `BALANCE_SHEET` must **NOT** be changed to `"Finansal Durum Tablosu"` — this is a misnamed column in the source data.

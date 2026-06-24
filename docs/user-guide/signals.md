@@ -122,24 +122,17 @@ result = engine.run_factor_from_panel(signal_df, portfolio_options=options)
 
 ## Standalone Factor ABC
 
-For standalone factor research, subclass `BaseSignal`:
+For standalone factor research, subclass `FactorSignal` from `standalone_factors.base`:
 
 ```python
-from bist_quant.signals.standalone_factors.base_signal import BaseSignal
+from bist_quant.signals.standalone_factors import (
+    FactorData,
+    FactorParams,
+    MomentumSignal,
+)
 
-class MyFactor(BaseSignal):
-    name = "my_factor"
-    description = "Custom factor"
-
-    def compute_raw_signal(
-        self,
-        dates: pd.DatetimeIndex,
-        loader: DataLoader,
-        config: dict,
-        custom: dict | None = None,
-    ) -> pd.DataFrame:
-        close = loader.build_close_panel()
-        # ... return (dates x tickers) DataFrame, higher = better
+data = FactorData(close=close_df, dates=dates, tickers=close_df.columns)
+scores = MomentumSignal().compute_signal(data, FactorParams()).scores
 ```
 
-The base class handles lagging (`lag_days=1` default), NaN fill, and schema validation.
+The base class handles winsorization, cross-sectional normalization, and selection helpers. For production backtests, use `build_signal()` instead.

@@ -58,29 +58,31 @@ result = engine.run_factor_from_panel(panel)
 print({k: result[k] for k in ("cagr", "sharpe", "max_drawdown")})
 ```
 
-## Subclass BaseSignal (Standalone Factor)
+## Subclass FactorSignal (Standalone Factor)
 
-For more control (automatic lagging, schema validation, output persistence):
+For more control (normalization, winsorization, selection helpers):
 
 ```python
-from bist_quant.signals.standalone_factors.base_signal import BaseSignal
+from bist_quant.signals.standalone_factors import FactorData, FactorParams, FactorSignal
 
-class MyReversal(BaseSignal):
-    name = "my_reversal"
-    description = "1-month reversal factor"
+class MyReversal(FactorSignal):
+    @property
+    def name(self) -> str:
+        return "my_reversal"
 
-    def compute_raw_signal(
-        self,
-        dates: pd.DatetimeIndex,
-        loader: DataLoader,
-        config: dict,
-        custom: dict | None = None,
-    ) -> pd.DataFrame:
-        lookback = (custom or {}).get("lookback_days", 21)
-        close = loader.build_close_panel()
-        return -close.pct_change(lookback).reindex(index=dates)
+    @property
+    def description(self) -> str:
+        return "1-month reversal factor"
+
+    def compute_raw_signal(self, data: FactorData, params: FactorParams):
+        lookback = params.custom.get("lookback_days", 21)
+        raw = -data.close.pct_change(lookback)
+        return raw.reindex(index=data.dates), {}
 
 # Usage
-factor = MyReversal(lag_days=1)   # base class handles lag + validation auto
-signal = factor.build(dates=dates, loader=loader, config={})
+factor = MyReversal()
+signal = factor.compute_signal(
+    FactorData(close=close, dates=dates, tickers=close.columns),
+    FactorParams(custom={"lookback_days": 21}),
+).scores
 ```
