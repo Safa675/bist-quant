@@ -273,25 +273,28 @@ class LowVolatilitySignal(FactorSignal):
         tickers = data.tickers
         close = data.close.reindex(index=dates, columns=tickers).astype(float)
 
-        lookback = params.lookback_days if params.lookback_days > 1 else 63
+        lookback = params.lookback_days if params.lookback_days > 1 else 252
         min_obs = max(int(lookback * 0.5), 21)
 
-        daily_returns = close.pct_change()
-        volatility = daily_returns.rolling(lookback, min_periods=min_obs).std() * np.sqrt(252)
+        from bist_quant.signals.core.low_volatility import calculate_low_volatility_scores
 
-        # Invert: low volatility = high score
-        raw_scores = -volatility
+        raw_scores = calculate_low_volatility_scores(
+            close,
+            use_weekly=True,
+            lookback=lookback,
+        )
 
         metadata = {
             "lookback_days": lookback,
-            "annualized": True,
+            "annualized": False,
+            "use_weekly": True,
             "inverted": True,
         }
 
         return raw_scores, metadata
 
     def get_default_params(self) -> FactorParams:
-        return FactorParams(lookback_days=63)
+        return FactorParams(lookback_days=252)
 
 
 # =============================================================================

@@ -96,30 +96,47 @@ class MomentumSignal(FactorSignal):
         tickers = data.tickers
         close = data.close.reindex(index=dates, columns=tickers).astype(float)
 
-        # Get momentum-specific params
-        mom_params = MomentumParams(**params.custom) if params.custom else MomentumParams()
+        from bist_quant.signals.core.momentum import (
+            MomentumMode,
+            compute_price_momentum,
+            compute_risk_adjusted_momentum,
+            compute_simple_vol_adjusted_momentum,
+        )
+
+        custom = dict(params.custom) if params.custom else {}
+        mom_params = MomentumParams(
+            lookback_days=int(custom.get("lookback_days", params.lookback_days or 126)),
+            skip_days=int(custom.get("skip_days", 21)),
+            use_log_returns=bool(custom.get("use_log_returns", False)),
+            volatility_adjust=bool(custom.get("volatility_adjust", False)),
+        )
         lookback = mom_params.lookback_days
         skip = mom_params.skip_days
+        indexing_mode: MomentumMode = custom.get("indexing_mode", "rotation")
 
-        # Calculate momentum
-        # Price at t-skip / Price at t-lookback-skip - 1
-        if mom_params.use_log_returns:
-            log_price = np.log(close)
-            momentum = log_price.shift(skip) - log_price.shift(lookback + skip)
+        if mom_params.volatility_adjust and indexing_mode == "prod":
+            momentum = compute_risk_adjusted_momentum(
+                close, lookback=lookback, skip=skip, mode="prod"
+            )
+        elif mom_params.volatility_adjust:
+            momentum = compute_simple_vol_adjusted_momentum(
+                close, lookback=lookback, skip=skip, mode=indexing_mode
+            )
         else:
-            momentum = close.shift(skip) / close.shift(lookback + skip) - 1.0
-
-        # Optional volatility adjustment (risk-adjusted momentum)
-        if mom_params.volatility_adjust:
-            daily_ret = close.pct_change()
-            vol = daily_ret.rolling(lookback, min_periods=lookback // 2).std()
-            momentum = momentum / vol.replace(0, np.nan)
+            momentum = compute_price_momentum(
+                close,
+                lookback=lookback,
+                skip=skip,
+                mode=indexing_mode,
+                use_log_returns=mom_params.use_log_returns,
+            )
 
         raw_scores = momentum.reindex(index=dates, columns=tickers)
 
         metadata = {
             "lookback_days": lookback,
             "skip_days": skip,
+            "indexing_mode": indexing_mode,
             "volatility_adjusted": mom_params.volatility_adjust,
             "coverage_pct": float(raw_scores.notna().sum().sum()) / max(raw_scores.size, 1) * 100,
         }
@@ -129,12 +146,13 @@ class MomentumSignal(FactorSignal):
     def get_default_params(self) -> FactorParams:
         """Return momentum-specific default parameters."""
         return FactorParams(
-            lookback_days=126,
+            lookback_days=252,
             lag_days=0,
             winsorize_pct=1.0,
             custom={
-                "lookback_days": 126,
+                "lookback_days": 252,
                 "skip_days": 21,
+                "indexing_mode": "rotation",
                 "volatility_adjust": False,
             },
         )
@@ -194,6 +212,9 @@ class VolatilityAdjustedMomentumSignal(MomentumSignal):
     def get_default_params(self) -> FactorParams:
         base = super().get_default_params()
         base.custom["volatility_adjust"] = True
+        base.custom["indexing_mode"] = "prod"
+        base.lookback_days = 252
+        base.custom["lookback_days"] = 252
         return base
 
 

@@ -67,7 +67,7 @@ class ProfitabilitySignal(FundamentalFactorSignal):
 
     @property
     def name(self) -> str:
-        return "profitability"
+        return "profit_margin"
 
     @property
     def description(self) -> str:

@@ -4,6 +4,16 @@
 
 A self-contained library of 13 well-defined factor signal implementations, each with a common abstract base class, standardized normalization/selection framework, and complete reference documentation. These factors are designed to be used independently of the main `BUILDERS` registry.
 
+> **Not production registry:** use `factory.build_signal()` for backtests. For parity-tested research factors in backtest context, use `standalone_bridge.build_research_signal()` (see `../standalone_bridge.py`). Canonical math is in `signals/core/` (see `../REFACTOR_PLAN.md`). `ProfitabilitySignal` here is **margin-based**; BUILDERS `profitability` is **assets-based**.
+
+### Momentum indexing modes (`custom["indexing_mode"]`)
+
+| Mode | Use case |
+|------|----------|
+| `rotation` (default) | 126d research / five_factor-style denominator |
+| `prod` | BUILDERS / vol-adjusted momentum |
+| `legacy_standalone` | Pre-refactor 126d raw momentum (`shift(skip)/shift(lookback)`); see `../CHANGELOG.md` |
+
 ## Files
 
 ```
