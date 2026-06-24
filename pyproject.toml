@@ -148,11 +148,10 @@ omit = [
     # Signals — untested infrastructure and strategy files
     "src/bist_quant/signals/__init__.py",
     "src/bist_quant/signals/_context.py",
-    "src/bist_quant/signals/axis_cache.py",
+    "src/bist_quant/signals/_axis_cache.py",
     "src/bist_quant/signals/composite.py",
     "src/bist_quant/signals/debug_utils.py",
     "src/bist_quant/signals/factor_axes.py",
-    "src/bist_quant/signals/factor_builders.py",
     "src/bist_quant/signals/five_factor_pipeline.py",
     "src/bist_quant/signals/momentum.py",
     "src/bist_quant/signals/orthogonalization.py",
